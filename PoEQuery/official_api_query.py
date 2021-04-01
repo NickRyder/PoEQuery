@@ -82,7 +82,7 @@ class CategoryType(Enum):
     INCUBATOR = None
     HEIST_TARGET = None
 
-    def __init__(self):
+    def __init__(self, _):
         return NotImplemented
 
     def __str__(self):
@@ -119,14 +119,14 @@ class StatFilter:
 
 @dataclass
 class StatFilters:
-    filters: Set[StatFilter] = field(default_factory=set)
+    filters: List[StatFilter] = field(default_factory=list)
     type: str = "and"
 
     def to_json(self):
         return {
             "type": self.type,
             # "disabled": False,
-            "filters": {stat_filter.to_json() for stat_filter in self.filters},
+            "filters": [stat_filter.to_json() for stat_filter in self.filters],
         }
 
 

@@ -12,7 +12,7 @@ STASH_URL = "https://www.pathofexile.com/character-window/get-stash-items"
 
 async def search_query_async(query):
 
-    response = await search(league_id, query)
+    response = await search(query)
 
     response_json = response.json()
     try:
@@ -75,11 +75,6 @@ def _recurse_fetch_query_with_query_divider(query, query_dividers):
         return fetch_ids, unsplit_queries
 
 
-def _get_search_link_from_item_ids(item_ids):
-    item_ids_str = ",".join(item_ids)
-    return f"{API_FETCH}/{item_ids_str}"
-
-
 def fetch_results(fetch_ids):
     return asyncio.run(_fetch_results(fetch_ids))
 
@@ -92,8 +87,7 @@ async def _fetch_results(fetch_ids, fetch_results_tqdm: Optional[tqdm] = None):
 
         batch = fetch_ids[-10:]
         del fetch_ids[-10:]
-        url = _get_search_link_from_item_ids(batch)
-        result = await fetch(url)
+        result = await fetch(batch)
         result_json = result.json()
 
         fetch_results_tqdm.update(len(batch))

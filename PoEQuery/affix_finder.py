@@ -9,10 +9,10 @@ from itertools import combinations
 
 added_filters = {
     "implicit": StatFilters(
-        filters={StatFilter(id="pseudo.pseudo_number_of_implicit_mods", min=1)}
+        filters=[StatFilter(id="pseudo.pseudo_number_of_implicit_mods", min=1)]
     ),
     "explicit": StatFilters(
-        filters={StatFilter(id="pseudo.pseudo_number_of_affix_mods", min=1)}
+        filters=[StatFilter(id="pseudo.pseudo_number_of_affix_mods", min=1)]
     ),
     "fractured": StatFilters(),
 }
@@ -70,7 +70,7 @@ def find_affixes(
     exclude_affixes: List[Mod] = [],
     use_added_filter_for_speed: bool = True,
 ) -> Set[Mod]:
-    stat_filter = StatFilters(filters=set(), type="not")
+    stat_filter = StatFilters(filters=[], type="not")
 
     if use_added_filter_for_speed:
         official_query.stat_filters.append(added_filters[affix_type])
@@ -102,12 +102,14 @@ def find_affixes(
             )
         added_mod = len(new_found_mods.difference(found_mods)) > 0
         found_mods = found_mods | new_found_mods
-        stat_filter.filters = simplify_stat_filter(
-            {
-                stat_filter
-                for mod in found_mods
-                for stat_filter in mod.to_query_stat_filters()
-            }
+        stat_filter.filters = list(
+            simplify_stat_filter(
+                {
+                    stat_filter
+                    for mod in found_mods
+                    for stat_filter in mod.to_query_stat_filters()
+                }
+            )
         )
         print(f"found {len(new_found_mods)} new mods, blocking {len(found_mods)} mods")
         fetch_ids, total, query = search_query(official_query.to_json())
