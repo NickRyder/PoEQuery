@@ -1,58 +1,18 @@
 from asyncio.futures import Future
 from collections import defaultdict, deque
 import logging
-from typing import Callable
+from typing import Dict
 import requests
 import asyncio
 from asyncio import Lock
-import time
+from tqdm import tqdm  # type: ignore
 
-from requests.api import request
-
-from PoEQuery import x_rate_limiter
+from PoEQuery.x_rate_limiter import rate_limited
 from PoEQuery import poesessid, user_agent
 
 USER_AGENT_HEADER = {"user-agent": user_agent}
 
 API_FETCH = "https://www.pathofexile.com/api/trade/fetch"
-
-# global objects which keep track of the wait time needed for the x_rate_policy
-# the lock should be used for accessing, waiting, and modifying the wait time
-# asyncio gets mad if you create a lock in a different loop, so i need to enumerate
-# the locks by loop.
-# **IMPORTANT** THIS WILL NOT WORK FOR ANY TYPE OF CONCURRENCY BEYOND ASYNCIO
-locks_by_policy = defaultdict(lambda: defaultdict(Lock))
-wait_times_by_policy = defaultdict(int)
-
-
-def rate_limited(x_rate_policy):
-    def rate_limited_decorator(
-        function: Callable[..., requests.Response]
-    ) -> Callable[..., requests.Response]:
-        async def rate_limited_function(*args, **kwargs):
-            request_lock = locks_by_policy[asyncio.get_running_loop()][x_rate_policy]
-            async with request_lock:
-                request_wait_time = wait_times_by_policy[x_rate_policy]
-                if request_wait_time is not None:
-                    wait_time = max(0, request_wait_time - time.monotonic())
-                    await asyncio.sleep(wait_time)
-
-                response = function(*args, **kwargs)
-                try:
-                    response.raise_for_status()
-                except requests.exceptions.HTTPError as e:
-                    logging.warning(e)
-
-                wait_time = x_rate_limiter.time_to_wait_on_new_response(
-                    response, x_rate_policy
-                )
-                wait_times_by_policy[x_rate_policy] = time.monotonic() + wait_time
-                return response
-
-        return rate_limited_function
-
-    return rate_limited_decorator
-
 
 API_TRADE = "https://www.pathofexile.com/api/trade/search"
 
@@ -92,8 +52,8 @@ In fetch_batched, after creating the futures, and awaiting `_fetch_batched`, we
 await the results of the futures, and then return them.
 """
 
-to_fetch_queue = deque()
-fetch_queue_lock = defaultdict(Lock)
+to_fetch_queue: deque = deque()
+fetch_queue_lock: Dict[str, Lock] = defaultdict(Lock)
 
 
 def _get_search_link_from_item_ids(item_ids):
@@ -211,15 +171,19 @@ if __name__ == "__main__":
         things = [test_fetch() for _ in range(N)] + [test_search() for _ in range(N)]
         return await asyncio.gather(*things)
 
-    async def sleep_fetch(item_ids, sleep_time):
+    async def sleep_fetch(item_ids, sleep_time, tqdm: tqdm = None):
         await asyncio.sleep(sleep_time)
-        return await fetch_batched(item_ids)
+        results = await fetch_batched(item_ids)
+        if tqdm is not None:
+            tqdm.update(len(results))
 
     async def test_multiple_fetch_batched():
+        _tqdm = tqdm(total=N)
         things = [
             sleep_fetch(
                 ["229ec3ed6037b122ef54d922fdc9c0ae8eaab590da5dc29fec9139803b2da442"],
                 0.1 * idx,
+                _tqdm,
             )
             for idx in range(N)
         ]
