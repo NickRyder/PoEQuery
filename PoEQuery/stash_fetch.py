@@ -16,7 +16,7 @@ def get_tab_overview():
         "tabIndex": 0,
         "tabs": 1,
     }
-    response = asyncio.run(stash_tab(url=STASH_URL, params=params))
+    response = asyncio.run(stash_tab(params=params))
     return response.json()
 
 
@@ -27,7 +27,7 @@ def get_tab_index(tab_index):
         "league": league_id,
         "tabIndex": tab_index,
     }
-    response = asyncio.run(stash_tab(url=STASH_URL, params=params))
+    response = asyncio.run(stash_tab(params=params))
     return response.json()
 
 

@@ -46,10 +46,11 @@ def rate_limited(x_rate_policy):
                 except requests.exceptions.HTTPError as e:
                     logging.warning(e)
 
+                response_policy = response.headers["X-Rate-Limit-Policy"]
                 assert (
-                    response.headers["X-Rate-Limit-Policy"] == x_rate_policy
-                ), f"""x_rate_policy ({x_rate_policy}) didnt match response ({x_rate_response.policy})
-                       try updating the decorator policy to be {x_rate_response.policy}"""
+                    response_policy == x_rate_policy
+                ), f"""x_rate_policy ({x_rate_policy}) didnt match response ({response_policy})
+                       try updating the decorator policy to be {response_policy}"""
 
                 wait_time = time_to_wait_on_new_response(response)
                 wait_times_by_policy[x_rate_policy] = time.monotonic() + wait_time
@@ -118,16 +119,17 @@ class XRateResponse:
 
 class ResponseSortedQueue:
     """
-    a queue which keeps the XRateResponses in date order
-
-    has an append_and_cull method which ensures things are kept sorted, and takes in a
-    max_time_frame int which will popleft all responses which are out of the time frame
+    a private queue which keeps the XRateResponses in date order
     """
 
     def __init__(self):
         self._deque = deque()
 
     def append_and_cull(self, response_to_append: XRateResponse, max_time_frame: int):
+        """
+        ensures things are kept sorted, takes in a max_time_frame int which will
+        popleft all responses which are out of the time frame
+        """
         assert (
             len(self._deque) == 0 or self._deque[-1].date <= response_to_append.date
         ), f"responses must be added in order {self._deque[-1].date, response_to_append.date}"
@@ -141,6 +143,11 @@ class ResponseSortedQueue:
     def sorted_response_times_within_range(
         self, target_response: XRateResponse, time_frame: int
     ) -> List[int]:
+        """
+        returns sorted list of all times from target_response to responses
+        in the queue which are within time_frame
+        """
+
         response_times = [
             (target_response.date - response.date).total_seconds()
             for response in self._deque

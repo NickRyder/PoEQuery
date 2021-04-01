@@ -1,27 +1,36 @@
+import asyncio
+import logging
+from asyncio import Lock
+from asyncio.events import AbstractEventLoop
 from asyncio.futures import Future
 from collections import defaultdict, deque
-import logging
-from typing import Dict
-import requests
-import asyncio
-from asyncio import Lock
-from tqdm import tqdm  # type: ignore
+from typing import Dict, List
 
+import requests
+
+from PoEQuery import league_id, poesessid, realm, user_agent
 from PoEQuery.x_rate_limiter import rate_limited
-from PoEQuery import poesessid, user_agent
 
 USER_AGENT_HEADER = {"user-agent": user_agent}
 
 API_FETCH = "https://www.pathofexile.com/api/trade/fetch"
 
-API_TRADE = "https://www.pathofexile.com/api/trade/search"
+API_SEARCH = "https://www.pathofexile.com/api/trade/search"
+
+API_STASH = "https://www.pathofexile.com/character-window/get-stash-items"
+
+API_CHARACTER = "https://www.pathofexile.com/character-window/get-characters"
+
+API_PASSIVE = "https://www.pathofexile.com/character-window/get-passive-skills"
+
+API_ITEM = "https://www.pathofexile.com/character-window/get-items"
 
 
 @rate_limited("trade-search-request-limit")
-def search(league_id: str, query: dict = None) -> requests.Response:
+def search(query: dict = None) -> requests.Response:
     query = {} if query is None else query
     return requests.post(
-        f"{API_TRADE}/{league_id}",
+        f"{API_SEARCH}/{league_id}",
         headers=USER_AGENT_HEADER,
         json=query,
         cookies=dict(POESESSID=poesessid),
@@ -29,10 +38,52 @@ def search(league_id: str, query: dict = None) -> requests.Response:
 
 
 @rate_limited("trade-fetch-request-limit")
-def fetch(url):
+def fetch(item_ids: List[str]) -> requests.Response:
     return requests.get(
-        url, headers=USER_AGENT_HEADER, cookies=dict(POESESSID=poesessid)
+        f"{API_FETCH}/{','.join(item_ids)}",
+        headers=USER_AGENT_HEADER,
+        cookies=dict(POESESSID=poesessid),
     )
+
+
+@rate_limited("backend-item-request-limit")
+def stash_tab(params: dict) -> requests.Response:
+    return requests.get(
+        url=API_STASH,
+        params=params,
+        headers=USER_AGENT_HEADER,
+        cookies=dict(POESESSID=poesessid),
+    )
+
+
+@rate_limited("backend-character-request-limit")
+def characters(account_name: str, realm: str = realm) -> requests.Response:
+    params = {"accountName": account_name, "realm": realm}
+    return requests.get(API_CHARACTER, params=params, headers=USER_AGENT_HEADER)
+
+
+def passive_tree(
+    account_name: str, character_name: str, realm: str = realm
+) -> requests.Response:
+    params = {
+        "accountName": account_name,
+        "realm": realm,
+        "character": character_name,
+    }
+    return requests.get(
+        API_PASSIVE,
+        params=params,
+        headers=USER_AGENT_HEADER,
+        cookies=dict(POESESSID=poesessid),
+    )
+
+
+@rate_limited("backend-item-request-limit")
+def items(
+    account_name: str, character_name: str, realm: str = realm
+) -> requests.Response:
+    params = {"accountName": account_name, "character": character_name, "realm": realm}
+    return requests.get(API_ITEM, params=params, headers=USER_AGENT_HEADER)
 
 
 ###
@@ -53,19 +104,21 @@ await the results of the futures, and then return them.
 """
 
 to_fetch_queue: deque = deque()
-fetch_queue_lock: Dict[str, Lock] = defaultdict(Lock)
+fetch_queue_lock: Dict[AbstractEventLoop, Lock] = defaultdict(Lock)
 
 
-def _get_search_link_from_item_ids(item_ids):
-    item_ids_str = ",".join(item_ids)
-    return f"{API_FETCH}/{item_ids_str}"
+class ItemFuture(Future):
+    item_id: str
+
+    def __init__(self, item_id):
+        self.item_id = item_id
+        super().__init__()
 
 
-async def fetch_batched(item_ids):
-    item_futures = []
+async def fetch_batched(item_ids: List[str]) -> List[dict]:
+    item_futures: List[ItemFuture] = []
     for item_id in item_ids:
-        item_future = Future()
-        item_future.__setattr__("item_id", item_id)
+        item_future: ItemFuture = ItemFuture(item_id)
         item_futures.append(item_future)
         to_fetch_queue.append(item_future)
 
@@ -87,7 +140,7 @@ async def fetch_batched(item_ids):
 
 
 @rate_limited("trade-fetch-request-limit")
-def _fetch_batched():
+def _fetch_batched() -> requests.Response:
     assert len(to_fetch_queue) > 0, "queue should be populated"
     item_futures = []
     for _ in range(10):
@@ -96,97 +149,12 @@ def _fetch_batched():
         except IndexError:
             pass
 
-    url = _get_search_link_from_item_ids(
-        [item_future.item_id for item_future in item_futures]
-    )
+    item_ids = [item_future.item_id for item_future in item_futures]
     result = requests.get(
-        url, headers=USER_AGENT_HEADER, cookies=dict(POESESSID=poesessid)
+        f"{API_FETCH}/{','.join(item_ids)}",
+        headers=USER_AGENT_HEADER,
+        cookies=dict(POESESSID=poesessid),
     )
     for item_result, item_future in zip(result.json()["result"], item_futures):
         item_future.set_result(item_result)
     return result
-
-
-@rate_limited("backend-item-request-limit")
-def stash_tab(url, params):
-    return requests.get(
-        url=url,
-        params=params,
-        headers=USER_AGENT_HEADER,
-        cookies=dict(POESESSID=poesessid),
-    )
-
-
-if __name__ == "__main__":
-
-    item_ids = [
-        "229ec3ed6037b122ef54d922fdc9c0ae8eaab590da5dc29fec9139803b2da442",
-        "9801a885b860bc01c5481185a73de06b4faecbd1966b69c3695b858128df4ae2",
-        "9821eb040c5d6ad5a1849dc47f63d0ef4d6acbce191390142d4fce6ce677d85f",
-        "3c09140f706df93ce4114cb9d1177be459567d5d85b1ae508053271aeef9d114",
-        "d66d2843e490b7b51699487d74f984015a833df8bbb0b25d062ede926b439d2b",
-        "2cb36a3f83d1049e843a495ba5b9ee62cb037fe7bb578815cb6b8e8d2248ff5e",
-        "9253d0a427243d42e0b7d9de7f470cafc913372ef3c685bb0812500eccd7461b",
-        "e3b33f355aff873996df52d388754a08f81a7e3cf94ebded5b84baef63cd696f",
-        "229ec3ed6037b122ef54d922fdc9c0ae8eaab590da5dc29fec9139803b2da442",
-        "9801a885b860bc01c5481185a73de06b4faecbd1966b69c3695b858128df4ae2",
-        "9821eb040c5d6ad5a1849dc47f63d0ef4d6acbce191390142d4fce6ce677d85f",
-        "3c09140f706df93ce4114cb9d1177be459567d5d85b1ae508053271aeef9d114",
-        "d66d2843e490b7b51699487d74f984015a833df8bbb0b25d062ede926b439d2b",
-        "2cb36a3f83d1049e843a495ba5b9ee62cb037fe7bb578815cb6b8e8d2248ff5e",
-        "9253d0a427243d42e0b7d9de7f470cafc913372ef3c685bb0812500eccd7461b",
-        "e3b33f355aff873996df52d388754a08f81a7e3cf94ebded5b84baef63cd696f",
-    ]
-
-    async def test_search():
-        print("search")
-        return await search(
-            "Ritual",
-            {
-                "query": {
-                    "status": {"option": "online"},
-                    "stats": [{"type": "and", "filters": []}],
-                },
-                "sort": {"price": "asc"},
-            },
-        )
-
-    async def test_fetch():
-        print("fetch")
-        return await fetch(
-            "https://www.pathofexile.com/api/trade/fetch/229ec3ed6037b122ef54d922fdc9c0ae8eaab590da5dc29fec9139803b2da442,9801a885b860bc01c5481185a73de06b4faecbd1966b69c3695b858128df4ae2,9821eb040c5d6ad5a1849dc47f63d0ef4d6acbce191390142d4fce6ce677d85f,3c09140f706df93ce4114cb9d1177be459567d5d85b1ae508053271aeef9d114,d66d2843e490b7b51699487d74f984015a833df8bbb0b25d062ede926b439d2b,2cb36a3f83d1049e843a495ba5b9ee62cb037fe7bb578815cb6b8e8d2248ff5e,9253d0a427243d42e0b7d9de7f470cafc913372ef3c685bb0812500eccd7461b,e3b33f355aff873996df52d388754a08f81a7e3cf94ebded5b84baef63cd696f,02716bfc05aa59b3ef43be557ebce8c15756b46aecece49b58fd8b493429c9d3,3a9e791544f36169a27f24d2be35b5fff74a6b18a2804bd0bd43993b22a57cbd?query=Ab3LSL"
-        )
-
-    async def test_fetch_batched():
-        print("fetch_batched")
-        return await fetch_batched(item_ids)
-
-    asyncio.run(test_search())
-    asyncio.run(test_fetch())
-    asyncio.run(test_fetch_batched())
-
-    N = 500
-
-    async def main():
-        things = [test_fetch() for _ in range(N)] + [test_search() for _ in range(N)]
-        return await asyncio.gather(*things)
-
-    async def sleep_fetch(item_ids, sleep_time, tqdm: tqdm = None):
-        await asyncio.sleep(sleep_time)
-        results = await fetch_batched(item_ids)
-        if tqdm is not None:
-            tqdm.update(len(results))
-
-    async def test_multiple_fetch_batched():
-        _tqdm = tqdm(total=N)
-        things = [
-            sleep_fetch(
-                ["229ec3ed6037b122ef54d922fdc9c0ae8eaab590da5dc29fec9139803b2da442"],
-                0.1 * idx,
-                _tqdm,
-            )
-            for idx in range(N)
-        ]
-        await asyncio.gather(*things)
-
-    asyncio.run(test_multiple_fetch_batched())
