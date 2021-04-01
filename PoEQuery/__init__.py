@@ -14,12 +14,14 @@ if not os.path.exists(__settings_path__):
         "settings.yaml does not exist, please copy from example_settings.yaml and fill in necessary information"
     )
 
-with open(join(dirname(dirname(__file__)), "settings.yaml"), "r") as f:
+with open(__settings_path__, "r") as f:
     settings = yaml.load(f, Loader=yaml.SafeLoader)
+
+with open(__example_settings_path__, "r") as f:
     example_settings = yaml.load(f, Loader=yaml.SafeLoader)
-    assert (
-        settings.keys() == example_settings.keys()
-    ), "please copy example_settings.yaml to settings.yaml"
+assert (
+    settings.keys() == example_settings.keys()
+), "please copy example_settings.yaml to settings.yaml"
 
 try:
     account_name = settings["account_name"]
@@ -28,6 +30,7 @@ try:
     poesessid = settings["poesessid"]
     user_agent = settings["user_agent"]
 except KeyError:
-    raise KeyError(
-        "please fill out all keys in settings.yaml, following template from examples.yaml"
-    )
+    raise KeyError("please copy template from example_settings.yaml")
+
+if not all([setting is not None for setting in settings.values()]):
+    raise ValueError("please fill out all fields in settings.yaml")
