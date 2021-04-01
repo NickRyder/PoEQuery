@@ -1,10 +1,10 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Set
 
 
 class SaleType(Enum):
-    PRICED_WITH_INFO = "priced_with_info"   
+    PRICED_WITH_INFO = "priced_with_info"
     PRICED = "priced"
     UNPRICED = "unpriced"
     ANY = "any"
@@ -12,7 +12,8 @@ class SaleType(Enum):
     def __str__(self):
         return self.value
 
-class SaleType(Enum):
+
+class CategoryType(Enum):
     ANY = "any"
     ANY_WEAPON = "weapon"
     ONE_HANDED_WEAPON = "weapon.one"
@@ -81,16 +82,19 @@ class SaleType(Enum):
     INCUBATOR = None
     HEIST_TARGET = None
 
+    def __init__(self):
+        return NotImplemented
+
     def __str__(self):
         return self.value
 
 
 @dataclass(unsafe_hash=True)
-class StatFilter():
+class StatFilter:
     id: str
     min: Optional[float] = None
     max: Optional[float] = None
-    disabled : bool = False
+    disabled: bool = False
 
     def _value_json(self):
         value_json = {}
@@ -98,34 +102,36 @@ class StatFilter():
             value_json["min"] = self.min
         if self.max is not None:
             value_json["max"] = self.max
-        
+
         return value_json
-    
+
     def to_json(self):
         value_json = self._value_json()
-        filter_json = {"id" : self.id,
-                "disabled" : self.disabled,}
+        filter_json = {
+            "id": self.id,
+            "disabled": self.disabled,
+        }
         if value_json:
             filter_json["value"] = value_json
 
         return filter_json
 
+
 @dataclass
-class StatFilters():
-    filters: List[StatFilter] = field(default_factory=list)
+class StatFilters:
+    filters: Set[StatFilter] = field(default_factory=set)
     type: str = "and"
 
     def to_json(self):
         return {
             "type": self.type,
             # "disabled": False,
-            "filters": [stat_filter.to_json() for stat_filter in self.filters],
-        } 
-
+            "filters": {stat_filter.to_json() for stat_filter in self.filters},
+        }
 
 
 @dataclass
-class OfficialApiQuery():    
+class OfficialApiQuery:
     stat_filters: List[StatFilters] = field(default_factory=lambda: [StatFilters()])
     name: Optional[str] = None
     type: Optional[str] = None
@@ -138,20 +144,17 @@ class OfficialApiQuery():
     rarity: Optional[str] = None
     category: Optional[str] = None
     indexed: Optional[str] = None
-    sale_type: Optional[str] = None #priced
-    category: Optional[str] = None #any
+    sale_type: Optional[str] = None  # priced
     identified: Optional[bool] = None
     enchanted: Optional[bool] = None
     fractured: Optional[bool] = None
     crafted: Optional[bool] = None
-
 
     sockets_b: Optional[int] = None
     sockets_g: Optional[int] = None
     sockets_r: Optional[int] = None
     sockets_w: Optional[int] = None
 
-    
     links_b: Optional[int] = None
     links_g: Optional[int] = None
     links_r: Optional[int] = None
@@ -183,10 +186,8 @@ class OfficialApiQuery():
             links["w"] = self.links_w
         if links:
             filters["links"] = links
-            
+
         return {"filters": filters}
-
-
 
     def _get_misc_filters(self):
         filters = {}
@@ -219,7 +220,7 @@ class OfficialApiQuery():
         if self.category is not None:
             filters["category"] = {"option": self.category}
         return {"filters": filters}
-    
+
     def _get_trade_filters(self):
         filters = {}
         if self.sale_type is not None:
@@ -232,35 +233,32 @@ class OfficialApiQuery():
         filters = {}
         misc_filters = self._get_misc_filters()
         if misc_filters["filters"]:
-            filters["misc_filters"] =  misc_filters
+            filters["misc_filters"] = misc_filters
         trade_filters = self._get_trade_filters()
         if trade_filters["filters"]:
-            filters["trade_filters"] =  trade_filters
+            filters["trade_filters"] = trade_filters
         type_filters = self._get_type_filters()
         if type_filters["filters"]:
             filters["type_filters"] = type_filters
         socket_filters = self._get_socket_filters()
         if socket_filters["filters"]:
             filters["socket_filters"] = socket_filters
-        
+
         return filters
 
-
-
-
-
     def _get_status(self):
-        return {
-                "option": "any"
-            }
+        return {"option": "any"}
 
     def _get_stats(self):
-        return  [stat_filters.to_json() for stat_filters in self.stat_filters] 
+        return [stat_filters.to_json() for stat_filters in self.stat_filters]
 
     def to_json(self):
-        query_json = {"query": {
-                "status" : self._get_status(),
-                "stats" : self._get_stats(),}}
+        query_json = {
+            "query": {
+                "status": self._get_status(),
+                "stats": self._get_stats(),
+            }
+        }
         filters = self._get_filters()
         if filters:
             query_json["query"]["filters"] = filters
@@ -268,7 +266,6 @@ class OfficialApiQuery():
             query_json["query"]["name"] = self.name
         if self.type is not None:
             query_json["query"]["type"] = self.type
-        
-        query_json["sort"] = {"price":"asc"}
-        return query_json 
 
+        query_json["sort"] = {"price": "asc"}
+        return query_json
