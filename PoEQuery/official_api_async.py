@@ -41,7 +41,7 @@ def rate_limited(x_rate_policy):
                 try:
                     response.raise_for_status()
                 except requests.exceptions.HTTPError as e:
-                    logging.warn(e)
+                    logging.warning(e)
 
                 wait_time = x_rate_limiter.time_to_wait_on_new_response(
                     response, x_rate_policy
@@ -119,7 +119,7 @@ async def fetch_batched(item_ids):
     for item_future in item_futures:
         returned_item = await item_future
         if returned_item is None:
-            logging.warn(f"received null result from fetch: {item_future.item_id}")
+            logging.warning(f"received null result from fetch: {item_future.item_id}")
         else:
             assert returned_item["id"] == item_future.item_id
         returned_results.append(returned_item)
@@ -139,7 +139,6 @@ def _fetch_batched():
     url = _get_search_link_from_item_ids(
         [item_future.item_id for item_future in item_futures]
     )
-    print(len(item_futures))
     result = requests.get(
         url, headers=USER_AGENT_HEADER, cookies=dict(POESESSID=poesessid)
     )
@@ -182,7 +181,7 @@ if __name__ == "__main__":
     async def test_search():
         print("search")
         return await search(
-            "https://www.pathofexile.com/api/trade/search/Ritual",
+            "Ritual",
             {
                 "query": {
                     "status": {"option": "online"},

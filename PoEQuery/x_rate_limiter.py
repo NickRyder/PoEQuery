@@ -26,7 +26,7 @@ class XRateLimitState:
 
 @dataclass
 class XRateLimitStates:
-    name: str
+    rule: str
     limit_states: List[XRateLimitState]
 
 
@@ -34,42 +34,32 @@ class XRateLimitStates:
 class XRateResponse:
     date: datetime
     policy: str
+    rules: List[str]
     named_limit_states: List[XRateLimitStates]
 
     def __init__(self, response: Response):
 
-        state_names = [
-            k
-            for k in response.headers.keys()
-            if k.startswith("X-Rate") and k.endswith("-State")
-        ]
+        self.rules = response.headers["X-Rate-Limit-Rules"].split(",")
+        self.policy = response.headers["X-Rate-Limit-Policy"]
 
-        x_rate_limit_states = []
+        self.named_limit_states = []
 
-        for state_name in state_names:
-            # e.g. X-Rate-Limit-Account-Ip
-            state_name_words = state_name.split("-")
-            # e.g. X-Rate-Limit-Account
-            limit_name = "-".join(state_name_words[:-1])
-            # e.g. Account
-            name = "-".join(state_name_words[3:-1])
-            limits = response.headers[limit_name]
-            states = response.headers[state_name]
+        for rule in self.rules:
+            limits = response.headers[f"X-Rate-Limit-{rule}"].split(",")
+            states = response.headers[f"X-Rate-Limit-{rule}-State"].split(",")
             limit_states = []
-            for limit, state in zip(limits.split(","), states.split(",")):
+            for limit, state in zip(limits, states):
                 limit_states.append(
                     XRateLimitState(limit=XRate(limit), state=XRate(state))
                 )
 
-            x_rate_limit_states.append(
-                XRateLimitStates(name=name, limit_states=limit_states)
+            self.named_limit_states.append(
+                XRateLimitStates(rule=rule, limit_states=limit_states)
             )
 
         self.date = datetime.strptime(
             response.headers["Date"], "%a, %d %b %Y %H:%M:%S %Z"
         )
-        self.policy = response.headers["X-Rate-Limit-Policy"]
-        self.named_limit_states = x_rate_limit_states
 
 
 recent_x_rate_responses: Dict[str, List[XRateResponse]] = defaultdict(list)
