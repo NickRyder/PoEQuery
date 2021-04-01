@@ -11,55 +11,6 @@ from typing import Callable, Dict, List
 import requests
 from requests.models import Response
 
-# Global objects which keep track of the wait time needed for the x_rate_policy
-# The lock should be used for accessing, waiting, and modifying the wait time
-# Asyncio gets mad if you create a lock in a different loop, so i need to enumerate
-# the locks by loop.
-# This will not work with multithreading/processsing
-locks_by_policy: Dict[AbstractEventLoop, Dict[str, Lock]] = defaultdict(
-    lambda: defaultdict(Lock)
-)
-wait_times_by_policy: Dict[str, int] = defaultdict(int)
-
-
-def rate_limited(x_rate_policy):
-    def rate_limited_decorator(
-        function: Callable[..., requests.Response]
-    ) -> Callable[..., requests.Response]:
-        async def rate_limited_function(*args, **kwargs):
-            request_lock = locks_by_policy[asyncio.get_running_loop()][x_rate_policy]
-            async with request_lock:
-                request_wait_time = wait_times_by_policy[x_rate_policy]
-                if request_wait_time is not None:
-                    wait_time = max(0, request_wait_time - time.monotonic())
-                    await asyncio.sleep(wait_time)
-
-                response = function(*args, **kwargs)
-
-                if not isinstance(response, requests.Response):
-                    raise TypeError(
-                        f"the functions wrapped must output requests.Response instead of {type(response)}"
-                    )
-
-                try:
-                    response.raise_for_status()
-                except requests.exceptions.HTTPError as e:
-                    logging.warning(e)
-
-                response_policy = response.headers["X-Rate-Limit-Policy"]
-                assert (
-                    response_policy == x_rate_policy
-                ), f"""x_rate_policy ({x_rate_policy}) didnt match response ({response_policy})
-                       try updating the decorator policy to be {response_policy}"""
-
-                wait_time = time_to_wait_on_new_response(response)
-                wait_times_by_policy[x_rate_policy] = time.monotonic() + wait_time
-                return response
-
-        return rate_limited_function
-
-    return rate_limited_decorator
-
 
 @dataclass
 class XRate:
@@ -117,6 +68,56 @@ class XRateResponse:
         )
 
 
+# Global objects which keep track of the wait time needed for the x_rate_policy
+# The lock should be used for accessing, waiting, and modifying the wait time
+# Asyncio gets mad if you create a lock in a different loop, so i need to enumerate
+# the locks by loop.
+# This will not work with multithreading/processsing
+locks_by_policy: Dict[AbstractEventLoop, Dict[str, Lock]] = defaultdict(
+    lambda: defaultdict(Lock)
+)
+wait_times_by_policy: Dict[str, int] = defaultdict(int)
+
+
+def rate_limited(x_rate_policy):
+    def rate_limited_decorator(
+        function: Callable[..., requests.Response]
+    ) -> Callable[..., requests.Response]:
+        async def rate_limited_function(*args, **kwargs):
+            request_lock = locks_by_policy[asyncio.get_running_loop()][x_rate_policy]
+            async with request_lock:
+                request_wait_time = wait_times_by_policy[x_rate_policy]
+                if request_wait_time is not None:
+                    wait_time = max(0, request_wait_time - time.monotonic())
+                    await asyncio.sleep(wait_time)
+
+                response = function(*args, **kwargs)
+
+                if not isinstance(response, requests.Response):
+                    raise TypeError(
+                        f"the functions wrapped must output requests.Response instead of {type(response)}"
+                    )
+
+                try:
+                    response.raise_for_status()
+                except requests.exceptions.HTTPError as e:
+                    logging.warning(e)
+
+                x_rate_response = XRateResponse(response)
+                assert (
+                    x_rate_response.policy == x_rate_policy
+                ), f"""x_rate_policy ({x_rate_policy}) didnt match response ({x_rate_response.policy})
+                       try updating the decorator policy to be {x_rate_response.policy}"""
+
+                wait_time = time_to_wait_on_new_response(x_rate_response)
+                wait_times_by_policy[x_rate_policy] = time.monotonic() + wait_time
+                return response
+
+        return rate_limited_function
+
+    return rate_limited_decorator
+
+
 class ResponseSortedQueue:
     """
     a private queue which keeps the XRateResponses in date order
@@ -161,7 +162,7 @@ recent_x_rate_responses: Dict[str, ResponseSortedQueue] = defaultdict(
 )
 
 
-def time_to_wait_on_new_response(response: Response) -> int:
+def time_to_wait_on_new_response(x_rate_response: XRateResponse) -> int:
     """
     response: a requests.model.Response object from a request which contains the following keys in its header:
     X-Rate-Limit-Policy
@@ -173,7 +174,6 @@ def time_to_wait_on_new_response(response: Response) -> int:
     returns:
     the number of seconds one should wait before sending another request to this endpoint
     """
-    x_rate_response = XRateResponse(response)
 
     time_frames = [
         limit_state.limit.time_frame
