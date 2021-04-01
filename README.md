@@ -4,7 +4,7 @@ A package to simplify querying the official trade website and parsing its result
 
 Currently `x_rate_limiter.py` and `official_api_async.py` are somewhat stable, expect the rest to move rapidly.
 
-# X Rate Limiting
+## X Rate Limiting
 Provides a decorator to automatically respect rate limits, spits out an asyncio coroutine, so you can do other work while waiting on rate limits.
 
 Example usage
