@@ -55,14 +55,14 @@ def test_multiple_fetch_batched():
 
     async def sleep_fetch(item_ids, sleep_time):
         await asyncio.sleep(sleep_time)
-        results = await fetch_batched(item_ids)
+        results = await fetch_batched(item_ids, use_cached=False)
 
     coroutines = [
         sleep_fetch(
-            ["229ec3ed6037b122ef54d922fdc9c0ae8eaab590da5dc29fec9139803b2da442"],
+            [item_id],
             0.1 * idx,
         )
-        for idx in range(N)
+        for idx, item_id in enumerate(item_ids * 5)
     ]
 
     async def _boilerplate():
