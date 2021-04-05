@@ -131,25 +131,25 @@ class TqdmLock:
     when entering and increments the value when exiting
     """
 
-    tqdm: Optional[tqdm]
+    _tqdm: Optional[tqdm]
     loop_to_lock: Dict[AbstractEventLoop, Lock]
     acquired_loop: Optional[AbstractEventLoop]
 
     def __init__(self, tqdm: Optional[tqdm]):
-        self.tqdm = tqdm
+        self._tqdm = tqdm
         self.loop_to_lock = defaultdict(Lock)
 
     async def acquire(self):
-        if self.tqdm is not None:
-            self.tqdm.total += 1
-            self.tqdm.refresh()
+        if self._tqdm is not None:
+            self._tqdm.total += 1
+            self._tqdm.refresh()
         self.acquired_loop = asyncio.get_running_loop()
         return await self.loop_to_lock[self.acquired_loop].acquire()
 
     def release(self):
-        if self.tqdm is not None:
-            self.tqdm.update(1)
-            self.tqdm.refresh()
+        if self._tqdm is not None:
+            self._tqdm.update(1)
+            self._tqdm.refresh()
         assert (
             asyncio.get_running_loop() == self.acquired_loop
         ), "acquired and released loop differ"
