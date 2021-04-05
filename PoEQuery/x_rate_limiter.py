@@ -122,30 +122,47 @@ class Waiter:
         self.tqdm.refresh()
 
 
-class TqdmLock(asyncio.Lock):
+policy_to_waiter: Dict[str, Waiter] = dict()
+
+
+class TqdmLock:
     """
     Simple superclass of asyncio.Lock which holds a tqdm that increments the total
     when entering and increments the value when exiting
     """
 
     tqdm: Optional[tqdm]
+    loop_to_lock: Dict[AbstractEventLoop, Lock]
+    acquired_loop: Optional[AbstractEventLoop]
 
     def __init__(self, tqdm: Optional[tqdm]):
-        super().__init__()
         self.tqdm = tqdm
+        self.loop_to_lock = defaultdict(Lock)
 
     async def acquire(self):
-        self.tqdm.total += 1
-        self.tqdm.refresh()
-        return await super().acquire()
+        if self.tqdm is not None:
+            self.tqdm.total += 1
+            self.tqdm.refresh()
+        self.acquired_loop = asyncio.get_running_loop()
+        return await self.loop_to_lock[self.acquired_loop].acquire()
 
     def release(self):
-        self.tqdm.update(1)
-        self.tqdm.refresh()
-        return super().release()
+        if self.tqdm is not None:
+            self.tqdm.update(1)
+            self.tqdm.refresh()
+        assert (
+            asyncio.get_running_loop() == self.acquired_loop
+        ), "acquired and released loop differ"
+        return self.loop_to_lock[asyncio.get_running_loop()].release()
 
+    async def __aenter__(self):
+        await self.acquire()
+        # We have no use for the "as ..."  clause in the with
+        # statement for locks.
+        return None
 
-policy_to_waiter: Dict[str, Waiter] = dict()
+    async def __aexit__(self, exc_type, exc, tb):
+        self.release()
 
 
 def rate_limited(x_rate_policy, use_tqdm=True):
@@ -153,17 +170,15 @@ def rate_limited(x_rate_policy, use_tqdm=True):
         function: Callable[..., requests.Response]
     ) -> Callable[..., requests.Response]:
         async def rate_limited_function(*args, **kwargs):
-            if x_rate_policy not in locks_by_policy[asyncio.get_running_loop()]:
-                locks_by_policy[asyncio.get_running_loop()][x_rate_policy] = (
-                    TqdmLock(tqdm(total=0, desc=x_rate_policy)) if use_tqdm else Lock()
+            if x_rate_policy not in locks_by_policy:
+                locks_by_policy[x_rate_policy] = TqdmLock(
+                    tqdm(total=0, desc=x_rate_policy) if use_tqdm else None
                 )
-            request_lock = locks_by_policy[asyncio.get_running_loop()][x_rate_policy]
-
+            request_lock = locks_by_policy[x_rate_policy]
             async with request_lock:
                 if x_rate_policy not in policy_to_waiter:
                     policy_to_waiter[x_rate_policy] = Waiter(x_rate_policy)
                 waiter = policy_to_waiter[x_rate_policy]
-
                 await waiter.wait()
 
                 response = function(*args, **kwargs)
