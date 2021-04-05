@@ -6,14 +6,15 @@ from PoEQuery.official_api_query import StatFilters, OfficialApiQuery
 from PoEQuery.affix_finder import find_affixes
 from tqdm import tqdm
 
+
 def estimate_price_in_chaos(price):
-    if price.currency =="alch":
-        return price.amount * .2
-    elif price.currency =="chaos":
+    if price.currency == "alch":
+        return price.amount * 0.2
+    elif price.currency == "chaos":
         return price.amount * 1
-    elif price.currency =="exalted":
+    elif price.currency == "exalted":
         return price.amount * 100
-    elif price.currency =="mirror":
+    elif price.currency == "mirror":
         return price.amount * 100 * 420
     else:
         # print(price)
@@ -22,10 +23,10 @@ def estimate_price_in_chaos(price):
 
 from pandas import DataFrame
 
-item_classes =  dict(
-    BOW = "weapon.bow",
-    CLAW = "weapon.claw",
-    BASE_DAGGER = "weapon.basedagger",
+item_classes = dict(
+    BOW="weapon.bow",
+    CLAW="weapon.claw",
+    BASE_DAGGER="weapon.basedagger",
     # RUNE_DAGGER = "weapon.runedagger",
     # ONE_HANDED_AXE = "weapon.oneaxe",
     # ONE_HANDED_MACE = "weapon.onemace",
@@ -49,7 +50,7 @@ item_classes =  dict(
     # BASE_JEWEL = "jewel.base",
     # ABYSS_JEWEL = "jewel.abyss",
     # CLUSTER_JEWEL = "jewel.cluster"
-    )
+)
 
 
 for item_class_key, item_class_value in item_classes.items():
@@ -57,27 +58,42 @@ for item_class_key, item_class_value in item_classes.items():
     results_df = DataFrame()
 
     async def search_and_fetch_and_price(mod):
-        results_entry = {"mod_str": str(mod), "mod_json": json.dumps(mod.to_json())}
+        results_entry = {"mod_str": str(mod), "mod_json": json.dumps(mod.json())}
         mod_stat_filters = StatFilters(filters=mod.to_query_stat_filters())
-        query=OfficialApiQuery(category=item_class_value, corrupted=False, indexed="1week", mirrored=False, rarity="nonunique", stat_filters=[mod_stat_filters]).to_json()
+        query = OfficialApiQuery(
+            category=item_class_value,
+            corrupted=False,
+            indexed="1week",
+            mirrored=False,
+            rarity="nonunique",
+            stat_filters=[mod_stat_filters],
+        ).json()
 
         results = await search_and_fetch_async(query)
         print(results_entry["mod_str"])
         for idx, result in enumerate(results):
             parsed_result = OfficialApiResult(result)
-            results_entry[f"price_{idx:02}"] = estimate_price_in_chaos(parsed_result.price)
-        
+            results_entry[f"price_{idx:02}"] = estimate_price_in_chaos(
+                parsed_result.price
+            )
+
         global results_df
         results_df = results_df.append(results_entry, ignore_index=True)
         return results_entry
 
-    mods = find_affixes(OfficialApiQuery(category=item_class_value, corrupted=False,synthesised=True, quality_max=0, rarity="nonunique"), affix_type="implicit")
+    mods = find_affixes(
+        OfficialApiQuery(
+            category=item_class_value,
+            corrupted=False,
+            synthesised=True,
+            quality_max=0,
+            rarity="nonunique",
+        ),
+        affix_type="implicit",
+    )
 
     async def main():
         await asyncio.gather(*[search_and_fetch_and_price(mod) for mod in mods])
         results_df.to_csv(f"data/synth_prices/{item_class_key}.csv")
 
     asyncio.run(main())
-
- 
- 

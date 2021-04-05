@@ -1,16 +1,17 @@
-from typing import Optional
+from PoEQuery.official_api_query import OfficialApiQuery
+from typing import List, Optional
 from PoEQuery.official_api_async import search, fetch, fetch_batched
 from PoEQuery import league_id
 
 import asyncio
-from tqdm import tqdm
+from tqdm import tqdm  # type: ignore
 
 
 API_FETCH = "https://www.pathofexile.com/api/trade/fetch"
 STASH_URL = "https://www.pathofexile.com/character-window/get-stash-items"
 
 
-async def search_query_async(query):
+async def search_query_async(query: OfficialApiQuery):
 
     response = await search(query)
 
@@ -23,10 +24,6 @@ async def search_query_async(query):
     total = response_json["total"]
 
     return fetch_ids, total, query
-
-
-def search_query(query):
-    return asyncio.run(search_query_async(query))
 
 
 def recurse_fetch_query_with_query_divider(query, query_dividers):
@@ -75,49 +72,15 @@ def _recurse_fetch_query_with_query_divider(query, query_dividers):
         return fetch_ids, unsplit_queries
 
 
-def fetch_results(fetch_ids):
-    return asyncio.run(_fetch_results(fetch_ids))
+def search_and_fetch_batched(queries: List[OfficialApiQuery]):
+    async def _boilerplate():
+        return await asyncio.gather(
+            *[search_and_fetch_async(query) for query in queries]
+        )
+
+    return asyncio.run(_boilerplate())
 
 
-async def _fetch_results(fetch_ids, fetch_results_tqdm: Optional[tqdm] = None):
-    fetch_ids = list(fetch_ids)
-    if fetch_ids:
-        if fetch_results_tqdm is None:
-            fetch_results_tqdm = tqdm(total=len(fetch_ids))
-
-        batch = fetch_ids[-10:]
-        del fetch_ids[-10:]
-        result = await fetch(batch)
-        result_json = result.json()
-
-        fetch_results_tqdm.update(len(batch))
-
-        try:
-            return result_json["result"] + await _fetch_results(
-                fetch_ids, fetch_results_tqdm
-            )
-        except KeyError:
-            print(result_json)
-            raise KeyError("result not key in response json")
-    else:
-        fetch_results_tqdm = None
-        return []
-
-
-async def search_and_fetch_async(query: dict):
+async def search_and_fetch_async(query: OfficialApiQuery):
     fetch_ids, total, query = await search_query_async(query)
     return await fetch_batched(fetch_ids)
-
-
-if __name__ == "__main__":
-    print(
-        search_query(
-            {
-                "query": {
-                    "status": {"option": "online"},
-                    "stats": [{"type": "and", "filters": []}],
-                },
-                "sort": {"price": "asc"},
-            }
-        )
-    )

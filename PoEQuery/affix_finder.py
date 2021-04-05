@@ -1,5 +1,5 @@
 from typing import List, Set
-from PoEQuery.official_api import search_query, fetch_results
+from PoEQuery.official_api import search_and_fetch_batched
 from PoEQuery.official_api_query import OfficialApiQuery, StatFilter, StatFilters
 from PoEQuery.official_api_result import Mod, OfficialApiResult
 
@@ -78,8 +78,7 @@ def find_affixes(
 
     found_mods: Set[Mod] = set()
 
-    fetch_ids, total, query = search_query(official_query.to_json())
-    results = fetch_results(fetch_ids)
+    results = search_and_fetch_batched([official_query])[0]
 
     if not results and use_added_filter_for_speed:
         logging.warn(
@@ -92,7 +91,6 @@ def find_affixes(
         new_found_mods = set()
         for result in results:
             parsed_result = OfficialApiResult(result)
-            print(parsed_result)
             for mod in parsed_result.__getattribute__(f"{affix_type}s"):
                 if mod not in exclude_affixes:
                     new_found_mods.add(mod)
@@ -111,8 +109,9 @@ def find_affixes(
                 }
             )
         )
-        print(f"found {len(new_found_mods)} new mods, blocking {len(found_mods)} mods")
-        fetch_ids, total, query = search_query(official_query.to_json())
-        results = fetch_results(fetch_ids)
+        logging.info(
+            f"Found {len(new_found_mods)} new mods, blocking {len(found_mods)} mods"
+        )
+        results = search_and_fetch_batched([official_query])[0]
 
     return found_mods
