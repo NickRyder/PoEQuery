@@ -50,9 +50,6 @@ def test_async_gather(use_cached):
 
 
 def test_multiple_fetch_batched():
-
-    N = 30
-
     async def sleep_fetch(item_ids, sleep_time):
         await asyncio.sleep(sleep_time)
         results = await fetch_batched(item_ids, use_cached=False)
@@ -62,7 +59,7 @@ def test_multiple_fetch_batched():
             [item_id],
             0.1 * idx,
         )
-        for idx, item_id in enumerate(item_ids * 5)
+        for idx, item_id in enumerate(item_ids * 1)
     ]
 
     async def _boilerplate():
