@@ -12,8 +12,8 @@ await the results of the futures, and then return them.
 """
 
 import asyncio
+from functools import lru_cache
 import logging
-from asyncio import Lock
 from asyncio.events import AbstractEventLoop
 from asyncio.futures import Future
 from collections import defaultdict, deque
@@ -45,9 +45,12 @@ class ItemFuture(Future):
 # TODO: wrap these in a class?
 to_fetch_queue: deque = deque()
 to_fetch_id_to_future: Dict[str, ItemFuture] = dict()
-fetch_queue_lock: Dict[AbstractEventLoop, TqdmLock] = defaultdict(
-    lambda: TqdmLock(tqdm(total=0, desc="trade-fetch-request-limit"))
-)
+desc_to_tqdm: Dict[str, tqdm] = dict()
+
+
+@lru_cache(maxsize=1)
+def fetch_queue_lock_lazy() -> TqdmLock:
+    return TqdmLock(tqdm(total=0, desc="trade-fetch-request-limit"))
 
 
 async def fetch_batched(item_ids: List[str], use_cached=True) -> List[dict]:
@@ -68,7 +71,7 @@ async def queue_single_fetch(
         logging.info(f"Item already in queue to be fetched: {item_id}")
         item_future = to_fetch_id_to_future[item_id]
 
-    async with fetch_queue_lock[asyncio.get_running_loop()]:
+    async with fetch_queue_lock_lazy():
         while not item_future.done():
             await _fetch_batched()
 
@@ -92,7 +95,6 @@ def _fetch_batched() -> requests.Response:
             del to_fetch_id_to_future[item_future.item_id]
         except IndexError:
             pass
-
     item_ids = [item_future.item_id for item_future in item_futures]
     response = requests.get(
         f"{API_FETCH}/{','.join(item_ids)}",
