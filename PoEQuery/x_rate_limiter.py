@@ -7,7 +7,7 @@ from asyncio.events import AbstractEventLoop
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Callable, Dict, List
+from typing import Callable, Dict, List, Optional
 
 import diskcache  # type: ignore
 import requests
@@ -84,41 +84,89 @@ locks_by_policy: Dict[AbstractEventLoop, Dict[str, Lock]] = defaultdict(
 
 tqdm_by_policy: Dict[str, tqdm] = dict()
 
+
 wait_times_by_policy: diskcache.Index = diskcache.Index(
     os.path.join(__diskcache_path__, f"x_rate_response")
 )
 
-for policy, wait_time in wait_times_by_policy.items():
-    loaded_wait = wait_time - time.time()
-    if loaded_wait > 0:
-        logging.info(f"Found existing wait time of {loaded_wait:02f} for {policy}")
+
+class Waiter:
+    policy: str
+    tqdm: tqdm
+
+    def __init__(self, policy: str):
+        self.policy = policy
+        loaded_wait = max(0, wait_times_by_policy[self.policy] - time.time())
+
+        self.tqdm = tqdm(
+            total=int(loaded_wait),
+            desc=f"{policy}-wait",
+        )
+        if loaded_wait > 0:
+            logging.info(f"Found existing wait time of {loaded_wait:02f} for {policy}")
+
+    async def wait(self):
+        if wait_times_by_policy[self.policy] is not None:
+            time_to_wait = max(0, wait_times_by_policy[self.policy] - time.time())
+            while time_to_wait:
+                self.tqdm.update(round(self.tqdm.total - time_to_wait - self.tqdm.n))
+                time_to_wait = max(0, wait_times_by_policy[self.policy] - time.time())
+                await asyncio.sleep(min(1.0, time_to_wait))
+            self.tqdm.reset()
+        else:
+            logging.info(f"Initializing persistent wait time cache for {x_rate_policy}")
+
+    def update(self, wait_time):
+        wait_times_by_policy[self.policy] = time.time() + wait_time
+        self.tqdm.total = int(wait_time)
+        self.tqdm.refresh()
 
 
-def rate_limited(x_rate_policy):
+class TqdmLock(asyncio.Lock):
+    """
+    Simple superclass of asyncio.Lock which holds a tqdm that increments the total
+    when entering and increments the value when exiting
+    """
+
+    tqdm: Optional[tqdm]
+
+    def __init__(self, tqdm: Optional[tqdm]):
+        super().__init__()
+        self.tqdm = tqdm
+
+    async def acquire(self):
+        self.tqdm.total += 1
+        self.tqdm.refresh()
+        return await super().acquire()
+
+    def release(self):
+        self.tqdm.update(1)
+        self.tqdm.refresh()
+        return super().release()
+
+
+policy_to_waiter: Dict[str, Waiter] = dict()
+
+
+def rate_limited(x_rate_policy, use_tqdm=True):
     def rate_limited_decorator(
         function: Callable[..., requests.Response]
     ) -> Callable[..., requests.Response]:
         async def rate_limited_function(*args, **kwargs):
+            if x_rate_policy not in locks_by_policy[asyncio.get_running_loop()]:
+                locks_by_policy[asyncio.get_running_loop()][x_rate_policy] = (
+                    TqdmLock(tqdm(total=0, desc=x_rate_policy)) if use_tqdm else Lock()
+                )
             request_lock = locks_by_policy[asyncio.get_running_loop()][x_rate_policy]
 
-            if x_rate_policy not in tqdm_by_policy:
-                tqdm_by_policy[x_rate_policy] = tqdm(total=0, desc=x_rate_policy)
-            tqdm_by_policy[x_rate_policy].total += 1
-            tqdm_by_policy[x_rate_policy].refresh()
             async with request_lock:
-                request_wait_time = wait_times_by_policy.get(x_rate_policy)
-                if request_wait_time is not None:
-                    wait_time = max(0, request_wait_time - time.time())
-                    await asyncio.sleep(wait_time)
-                else:
-                    logging.info(
-                        f"Initializing persistent wait time cache for {x_rate_policy}"
-                    )
+                if x_rate_policy not in policy_to_waiter:
+                    policy_to_waiter[x_rate_policy] = Waiter(x_rate_policy)
+                waiter = policy_to_waiter[x_rate_policy]
+
+                await waiter.wait()
 
                 response = function(*args, **kwargs)
-
-                tqdm_by_policy[x_rate_policy].update(1)
-                tqdm_by_policy[x_rate_policy].refresh()
 
                 if not isinstance(response, requests.Response):
                     raise TypeError(
@@ -136,8 +184,7 @@ def rate_limited(x_rate_policy):
                 ), f"""x_rate_policy ({x_rate_policy}) didnt match response ({x_rate_response.policy})
                        try updating the decorator policy to be {x_rate_response.policy}"""
 
-                wait_time = time_to_wait_on_new_response(x_rate_response)
-                wait_times_by_policy[x_rate_policy] = time.time() + wait_time
+                waiter.update(time_to_wait_on_new_response(x_rate_response))
                 return response
 
         return rate_limited_function

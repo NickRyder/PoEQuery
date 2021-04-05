@@ -22,9 +22,10 @@ from typing import Dict, List
 import time
 
 import requests
+from tqdm.std import tqdm
 
 from PoEQuery import __diskcache_path__, poesessid, user_agent
-from PoEQuery.x_rate_limiter import rate_limited
+from PoEQuery.x_rate_limiter import TqdmLock, rate_limited
 
 from PoEQuery.cache import cache_results
 
@@ -44,7 +45,9 @@ class ItemFuture(Future):
 # TODO: wrap these in a class?
 to_fetch_queue: deque = deque()
 to_fetch_id_to_future: Dict[str, ItemFuture] = dict()
-fetch_queue_lock: Dict[AbstractEventLoop, Lock] = defaultdict(Lock)
+fetch_queue_lock: Dict[AbstractEventLoop, TqdmLock] = defaultdict(
+    lambda: TqdmLock(tqdm(total=0, desc="trade-fetch-request-limit"))
+)
 
 
 async def fetch_batched(item_ids: List[str], use_cached=True) -> List[dict]:
@@ -77,7 +80,8 @@ async def queue_single_fetch(
     return returned_item
 
 
-@rate_limited("trade-fetch-request-limit")
+# don't use tqdm here, since we have an outer TqdmLock
+@rate_limited("trade-fetch-request-limit", use_tqdm=False)
 def _fetch_batched() -> requests.Response:
     assert len(to_fetch_queue) > 0, "queue should be populated"
     item_futures = []
