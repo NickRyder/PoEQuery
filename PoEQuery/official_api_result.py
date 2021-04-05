@@ -85,7 +85,7 @@ class Mod:
             stat_filters.append(StatFilter(id=hash_, min=min_average, max=max_average))
         return stat_filters
 
-    def to_json(self):
+    def json(self):
         return deepcopy(self._json)
 
     def __repr__(self):
