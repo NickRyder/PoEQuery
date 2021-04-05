@@ -1,3 +1,4 @@
+import logging
 from PoEQuery.official_api_query import OfficialApiQuery
 from typing import List, Optional
 from PoEQuery.official_api_async import search, fetch, fetch_batched
@@ -11,17 +12,31 @@ API_FETCH = "https://www.pathofexile.com/api/trade/fetch"
 STASH_URL = "https://www.pathofexile.com/character-window/get-stash-items"
 
 
-async def search_query_async(query: OfficialApiQuery):
+async def search_query_async(query: OfficialApiQuery, use_cached=True):
+    """
+    We do a single retry if use_cached=True
 
-    response = await search(query)
+    This prevents us from recalling data from error results
+
+    TODO: need more robust validation before caching
+    """
+    response = await search(query, use_cached=use_cached)
 
     response_json = response.json()
     try:
         query = response_json["query"]
     except KeyError:
         pass
-    fetch_ids = response_json["result"]
-    total = response_json["total"]
+
+    try:
+        fetch_ids = response_json["result"]
+        total = response_json["total"]
+    except KeyError:
+        if use_cached:
+            return await search_query_async(query, False)
+        else:
+            logging.error(f"Key Error on {query}")
+            raise
 
     return fetch_ids, total, query
 
