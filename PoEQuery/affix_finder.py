@@ -110,7 +110,7 @@ def find_affixes(
             )
         )
         logging.info(
-            f"Found {len(new_found_mods)} new mods, blocking {len(found_mods)} mods"
+            f"Affix Finder: Found {len(new_found_mods)} new mods, blocking {len(found_mods)} mods"
         )
         results = search_and_fetch_batched([official_query])[0]
 
