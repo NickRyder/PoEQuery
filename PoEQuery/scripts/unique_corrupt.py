@@ -1,21 +1,12 @@
 from functools import lru_cache
-from PoEQuery.affix_finder import find_affixes
-from PoEQuery.official_api_result import OfficialApiResult
-from pandas.core.frame import DataFrame
-from PoEQuery.official_api_query import OfficialApiQuery, StatFilter, StatFilters
-import json
-import traceback
-from collections import defaultdict
 
-import os
-import pandas as pd
+from PoEQuery.affix_finder import find_affixes
+from PoEQuery.official_api_query import OfficialApiQuery, StatFilter, StatFilters
+from tqdm import tqdm
 
 from PoEQuery.official_api import (
-    search_query,
-    fetch_results,
-    recurse_fetch_query_with_query_divider,
+    search_and_fetch_batched,
 )
-from PoEQuery.query_generator import generate_by_ilvl, generate_by_price
 from PoEQuery.wiki_api import fetch_all_query
 
 unique_query = {
@@ -31,47 +22,6 @@ unique_query = {
 wiki_unique_fetch = fetch_all_query(unique_query)
 
 print(f"{len(wiki_unique_fetch)} Uniques Fetched from Wiki")
-
-
-def results_jsonl(results, file_name):
-
-    with open(f"{file_name}.jsonl", "w") as f:
-        for result in results:
-            f.write(json.dumps(result) + "\n")
-
-
-def get_results_from_unique(name, type):
-    query = OfficialApiQuery(
-        stat_filters=[
-            StatFilters(
-                [StatFilter(id="pseudo.pseudo_number_of_implicit_mods", min=1, max=1)]
-            )
-        ],
-        corrupted=True,
-        sale_type="priced",
-        name=name,
-        type=type,
-    ).json()
-
-    fetch_ids, unsplit_queries = recurse_fetch_query_with_query_divider(
-        query, [generate_by_ilvl, generate_by_price]
-    )
-
-    return fetch_results(fetch_ids)
-
-
-def estimate_price_in_chaos(price):
-    if price.currency == "alch":
-        return price.amount * 0.2
-    elif price.currency == "chaos":
-        return price.amount * 1
-    elif price.currency == "exalted":
-        return price.amount * 100
-    elif price.currency == "mirror":
-        return price.amount * 100 * 420
-    else:
-        # print(price)
-        return None
 
 
 item_classes = dict(
@@ -142,50 +92,6 @@ wiki_item_class_to_api_item_class = {
 }
 
 
-def fetch_all_corrupt_uniques():
-    g = open("unique_counts.txt", "w")
-
-    for values in wiki_unique_fetch:
-        name_ = values["name"]
-        type_ = values["base item"]
-
-        stripped_name = f"""./data/unique_corrupts/{name_.replace(" ", "_").lower()}"""
-
-        try:
-            if os.path.exists(f"{stripped_name}.jsonl"):
-                query = OfficialApiQuery(
-                    stat_filters=[
-                        StatFilters(
-                            [
-                                StatFilter(
-                                    id="pseudo.pseudo_number_of_implicit_mods",
-                                    min=1,
-                                    max=1,
-                                )
-                            ]
-                        )
-                    ],
-                    corrupted=True,
-                    sale_type="priced",
-                    name=name_,
-                    type=type_,
-                ).json()
-                fetch_ids, total, query = search_query(query)
-
-                with open(f"{stripped_name}.jsonl", "r") as f:
-                    g.writelines([f"{name_} {type_} {total} {len(f.readlines())}"])
-
-                print(f"skipping {name_}")
-            else:
-                print(name_, type_)
-                results = get_results_from_unique(name_, type_)
-                results_jsonl(results, stripped_name)
-                # parse_results_to_csv(stripped_name)
-        except Exception as e:
-            traceback.print_exc()
-            print(name_, type_, e)
-
-
 @lru_cache(maxsize=None)
 def get_corrupt_for_item_class(category):
     non_corrupt = find_affixes(
@@ -227,42 +133,31 @@ def get_corrupt_for_item_class(category):
     return corrupt.difference(non_corrupt)
 
 
-for values in wiki_unique_fetch:
-    results_df = pd.DataFrame()
+# print(get_corrupt_for_item_class("accessory.ring"))
+t = tqdm(wiki_unique_fetch)
+for values in t:
     name_ = values["name"]
     type_ = values["base item"]
+    t.set_description(f"{name_} {type_}")
 
     item_class = wiki_item_class_to_api_item_class[values["class id"]]
 
     if item_class is None:
         continue
-    print(item_class)
     corrupt_mods = get_corrupt_for_item_class(item_classes[item_class])
 
-    stripped_name = f"""./data/unique_corrupts/{name_.replace(" ", "_").lower()}_{type_.replace(" ", "_").lower()}"""
-    query = OfficialApiQuery(
-        stat_filters=[
-            StatFilters(
-                [StatFilter(id="pseudo.pseudo_number_of_implicit_mods", min=1, max=1)]
-            )
-        ],
-        corrupted=True,
-        sale_type="priced",
-        name=name_,
-        type=type_,
-    ).json()
-
+    queries = []
     for mod in corrupt_mods:
-        fetch_ids, total, query = search_query(query)
-        results = fetch_results(fetch_ids)
 
-        results_entry = {"mod_str": str(mod), "mod_json": json.dumps(mod.json())}
-
-        for idx, result in enumerate(results):
-            parsed_result = OfficialApiResult(result)
-            results_entry[f"price_{idx:02}"] = estimate_price_in_chaos(
-                parsed_result.price
-            )
-
-        results_df = results_df.append(results_entry, ignore_index=True)
-    results_df.to_csv(f"{stripped_name}.csv")
+        query = OfficialApiQuery(
+            stat_filters=[
+                StatFilters(mod.to_query_stat_filters()),
+            ],
+            corrupted=True,
+            sale_type="priced",
+            name=name_,
+            type=type_,
+            indexed="2week",
+        )
+        queries.append(query)
+    results = search_and_fetch_batched(queries)
