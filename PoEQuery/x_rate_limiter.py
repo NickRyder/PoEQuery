@@ -1,15 +1,20 @@
 import asyncio
 import logging
+import os
 import time
 from asyncio import Lock
 from asyncio.events import AbstractEventLoop
-from collections import defaultdict, deque
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Callable, Dict, List
 
+import diskcache  # type: ignore
 import requests
 from requests.models import Response
+from tqdm import tqdm  # type: ignore
+
+from PoEQuery import __diskcache_path__
 
 
 @dataclass
@@ -76,7 +81,17 @@ class XRateResponse:
 locks_by_policy: Dict[AbstractEventLoop, Dict[str, Lock]] = defaultdict(
     lambda: defaultdict(Lock)
 )
-wait_times_by_policy: Dict[str, int] = defaultdict(int)
+
+tqdm_by_policy: Dict[str, tqdm] = dict()
+
+wait_times_by_policy: diskcache.Index = diskcache.Index(
+    os.path.join(__diskcache_path__, f"x_rate_response")
+)
+
+for policy, wait_time in wait_times_by_policy.items():
+    loaded_wait = wait_time - time.time()
+    if loaded_wait > 0:
+        logging.info(f"Found existing wait time of {loaded_wait:02f} for {policy}")
 
 
 def rate_limited(x_rate_policy):
@@ -85,13 +100,25 @@ def rate_limited(x_rate_policy):
     ) -> Callable[..., requests.Response]:
         async def rate_limited_function(*args, **kwargs):
             request_lock = locks_by_policy[asyncio.get_running_loop()][x_rate_policy]
+
+            if x_rate_policy not in tqdm_by_policy:
+                tqdm_by_policy[x_rate_policy] = tqdm(total=0, desc=x_rate_policy)
+            tqdm_by_policy[x_rate_policy].total += 1
+            tqdm_by_policy[x_rate_policy].refresh()
             async with request_lock:
-                request_wait_time = wait_times_by_policy[x_rate_policy]
+                request_wait_time = wait_times_by_policy.get(x_rate_policy)
                 if request_wait_time is not None:
-                    wait_time = max(0, request_wait_time - time.monotonic())
+                    wait_time = max(0, request_wait_time - time.time())
                     await asyncio.sleep(wait_time)
+                else:
+                    logging.info(
+                        f"Initializing persistent wait time cache for {x_rate_policy}"
+                    )
 
                 response = function(*args, **kwargs)
+
+                tqdm_by_policy[x_rate_policy].update(1)
+                tqdm_by_policy[x_rate_policy].refresh()
 
                 if not isinstance(response, requests.Response):
                     raise TypeError(
@@ -110,7 +137,7 @@ def rate_limited(x_rate_policy):
                        try updating the decorator policy to be {x_rate_response.policy}"""
 
                 wait_time = time_to_wait_on_new_response(x_rate_response)
-                wait_times_by_policy[x_rate_policy] = time.monotonic() + wait_time
+                wait_times_by_policy[x_rate_policy] = time.time() + wait_time
                 return response
 
         return rate_limited_function
@@ -123,8 +150,13 @@ class ResponseSortedQueue:
     a private queue which keeps the XRateResponses in date order
     """
 
-    def __init__(self):
-        self._deque = deque()
+    def __init__(self, x_rate_policy: str):
+        self._deque = diskcache.Deque(
+            directory=os.path.join(
+                __diskcache_path__, f"x_rate_response/{x_rate_policy}"
+            )
+        )
+        logging.info(f"Found {len(self._deque)} cached responses from {x_rate_policy}")
 
     def append_and_cull(self, response_to_append: XRateResponse, max_time_frame: int):
         """
@@ -145,7 +177,7 @@ class ResponseSortedQueue:
         self, target_response: XRateResponse, time_frame: int
     ) -> List[int]:
         """
-        returns sorted list of all times from target_response to responses
+        returns sorted list of all times from target_response tso responses
         in the queue which are within time_frame
         """
 
@@ -157,9 +189,7 @@ class ResponseSortedQueue:
         return response_times[::-1]
 
 
-recent_x_rate_responses: Dict[str, ResponseSortedQueue] = defaultdict(
-    ResponseSortedQueue
-)
+recent_x_rate_responses: Dict[str, ResponseSortedQueue] = {}
 
 
 def time_to_wait_on_new_response(x_rate_response: XRateResponse) -> int:
@@ -181,6 +211,11 @@ def time_to_wait_on_new_response(x_rate_response: XRateResponse) -> int:
         for limit_state in named_limit_state.limit_states
     ]
     max_time_frame = max(time_frames)
+    if x_rate_response.policy not in recent_x_rate_responses:
+        recent_x_rate_responses[x_rate_response.policy] = ResponseSortedQueue(
+            x_rate_response.policy
+        )
+
     recent_x_rate_responses[x_rate_response.policy].append_and_cull(
         x_rate_response, max_time_frame
     )
@@ -200,10 +235,10 @@ def time_to_wait_on_new_response(x_rate_response: XRateResponse) -> int:
 
                 if len(response_times) < limit_state.state.request_count:
                     logging.warn(
-                        f"could not find adequate number of recent requests\
-                         {len(response_times)}/{limit_state.state.request_count},\
-                              defaulting to waiting out time_frame for oldest request,\
-                                   {limit_state.state.time_frame - response_times[-1]}"
+                        f"could not find adequate number of recent requests"
+                        f"{len(response_times)}/{limit_state.state.request_count},"
+                        f"defaulting to waiting out time_frame for oldest request,"
+                        f"{limit_state.state.time_frame - response_times[-1]}"
                     )
                     wait_times.append(limit_state.state.time_frame - response_times[-1])
                 else:
