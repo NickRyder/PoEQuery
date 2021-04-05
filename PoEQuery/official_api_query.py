@@ -1,6 +1,15 @@
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional, Set
+from typing import List, Optional
+import json
+
+"""
+A dataclass representation for a official api query.
+
+query.json() produces a json which can be used against the search endpoint.
+This json turns sets into sorted lists so that:
+query1 == query2 implies json.dumps(query1.json()) == json.dumps(query2.json())
+"""
 
 
 class SaleType(Enum):
@@ -105,7 +114,7 @@ class StatFilter:
 
         return value_json
 
-    def to_json(self):
+    def json(self):
         value_json = self._value_json()
         filter_json = {
             "id": self.id,
@@ -122,11 +131,14 @@ class StatFilters:
     filters: List[StatFilter] = field(default_factory=list)
     type: str = "and"
 
-    def to_json(self):
+    def json(self):
         return {
             "type": self.type,
             # "disabled": False,
-            "filters": [stat_filter.to_json() for stat_filter in self.filters],
+            "filters": sorted(
+                [stat_filter.json() for stat_filter in self.filters],
+                key=lambda x: json.dumps(x),
+            ),
         }
 
 
@@ -250,9 +262,12 @@ class OfficialApiQuery:
         return {"option": "any"}
 
     def _get_stats(self):
-        return [stat_filters.to_json() for stat_filters in self.stat_filters]
+        return sorted(
+            [stat_filters.json() for stat_filters in self.stat_filters],
+            key=lambda x: json.dumps(x),
+        )
 
-    def to_json(self):
+    def json(self):
         query_json = {
             "query": {
                 "status": self._get_status(),
