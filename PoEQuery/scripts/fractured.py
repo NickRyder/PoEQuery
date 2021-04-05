@@ -1,4 +1,3 @@
-import logging
 from PoEQuery.official_api import search_and_fetch_batched
 from PoEQuery.official_api_query import StatFilters, OfficialApiQuery
 from PoEQuery.affix_finder import find_affixes
@@ -35,7 +34,7 @@ item_classes = dict(
 
 t = tqdm(item_classes.items())
 for item_class_key, item_class_value in t:
-    t.set_description(desc=f"item_classes: {item_class_key}")
+    t.set_description(desc=f"item_classes - {item_class_key}")
 
     mods = find_affixes(
         OfficialApiQuery(
