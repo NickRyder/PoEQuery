@@ -1,3 +1,6 @@
+.diskcache/*
+..tmp/*
+
 settings.yaml
 
 .vscode/*

@@ -1,7 +1,36 @@
 from os.path import dirname, join
 import os
 import yaml
+import logging
+import tqdm
 
+
+class TqdmLoggingHandler(logging.StreamHandler):
+    """
+    https://stackoverflow.com/questions/38543506/change-logging-print-function-to-tqdm-write-so-logging-doesnt-interfere-wit
+    """
+
+    def __init__(self, level=logging.NOTSET):
+        super().__init__(level)
+
+    def emit(self, record):
+        try:
+            msg = self.format(record)
+            tqdm.tqdm.write(msg)
+            self.flush()
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except:
+            self.handleError(record)
+
+
+handler = TqdmLoggingHandler()
+handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT))
+
+logging.getLogger().setLevel(logging.INFO)
+logging.getLogger().addHandler(handler)
+
+__diskcache_path__ = join(dirname(dirname(__file__)), ".diskcache/")
 __settings_path__ = join(dirname(dirname(__file__)), "settings.yaml")
 __example_settings_path__ = join(dirname(dirname(__file__)), "example_settings.yaml")
 
