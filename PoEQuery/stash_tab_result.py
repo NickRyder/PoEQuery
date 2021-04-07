@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Tuple
 from PoEQuery.official_api_result import OfficialApiItem
 
 

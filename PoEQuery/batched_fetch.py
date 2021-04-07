@@ -14,9 +14,8 @@ await the results of the futures, and then return them.
 import asyncio
 from functools import lru_cache
 import logging
-from asyncio.events import AbstractEventLoop
 from asyncio.futures import Future
-from collections import defaultdict, deque
+from collections import deque
 from typing import Dict, List
 
 import time
