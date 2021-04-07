@@ -171,8 +171,6 @@ def bisect_count_one_mod(query: OfficialApiQuery) -> List[OfficialApiQuery]:
     else:
         return []
 
-    return [query_copy]
-
 
 from functools import partial
 
