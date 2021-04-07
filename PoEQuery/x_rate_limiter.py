@@ -98,10 +98,7 @@ class Waiter:
         self.policy = policy
         loaded_wait = max(0, wait_times_by_policy[self.policy] - time.time())
 
-        self.tqdm = tqdm(
-            total=int(loaded_wait),
-            desc=f"{policy}-wait",
-        )
+        self.tqdm = tqdm(total=int(loaded_wait), desc=f"{policy}-wait")
         if loaded_wait > 0:
             logging.info(f"Found existing wait time of {loaded_wait:02f} for {policy}")
 
@@ -188,10 +185,7 @@ def rate_limited(x_rate_policy, use_tqdm=True):
                         f"the functions wrapped must output requests.Response instead of {type(response)}"
                     )
 
-                try:
-                    response.raise_for_status()
-                except requests.exceptions.HTTPError as e:
-                    logging.warning(e)
+                response.raise_for_status()
 
                 x_rate_response = XRateResponse(response)
                 assert (

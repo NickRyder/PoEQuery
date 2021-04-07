@@ -130,9 +130,19 @@ class StatFilter:
 class StatFilters:
     filters: List[StatFilter] = field(default_factory=list)
     type: str = "and"
+    min: Optional[float] = None
+    max: Optional[float] = None
+
+    def value_json(self):
+        json = {}
+        if self.min is not None:
+            json["min"] = self.min
+        if self.max is not None:
+            json["max"] = self.max
+        return json
 
     def json(self):
-        return {
+        _json = {
             "type": self.type,
             # "disabled": False,
             "filters": sorted(
@@ -140,6 +150,10 @@ class StatFilters:
                 key=lambda x: json.dumps(x),
             ),
         }
+        value_json = self.value_json()
+        if value_json:
+            _json["value"] = value_json
+        return _json
 
 
 @dataclass

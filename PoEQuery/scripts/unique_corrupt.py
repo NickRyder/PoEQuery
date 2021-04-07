@@ -1,3 +1,4 @@
+from PoEQuery.query_generator import bisect_count_one_mod
 from functools import lru_cache
 
 from PoEQuery.affix_finder import find_affixes
@@ -5,6 +6,7 @@ from PoEQuery.official_api_query import OfficialApiQuery, StatFilter, StatFilter
 from tqdm import tqdm
 
 from PoEQuery.official_api import (
+    recurse_fetch_query_with_query_divider,
     search_and_fetch_batched,
 )
 from PoEQuery.wiki_api import fetch_all_query
@@ -133,7 +135,6 @@ def get_corrupt_for_item_class(category):
     return corrupt.difference(non_corrupt)
 
 
-# print(get_corrupt_for_item_class("accessory.ring"))
 t = tqdm(wiki_unique_fetch)
 for values in t:
     name_ = values["name"]
@@ -144,12 +145,9 @@ for values in t:
 
     if item_class is None:
         continue
-    corrupt_mods = get_corrupt_for_item_class(item_classes[item_class])
 
-    queries = []
-    for mod in corrupt_mods:
-
-        query = OfficialApiQuery(
+    queries = [
+        OfficialApiQuery(
             stat_filters=[
                 StatFilters(mod.to_query_stat_filters()),
             ],
@@ -159,5 +157,29 @@ for values in t:
             type=type_,
             indexed="2week",
         )
-        queries.append(query)
-    results = search_and_fetch_batched(queries)
+        for mod in get_corrupt_for_item_class(item_classes[item_class])
+    ]
+    all_query = OfficialApiQuery(
+        stat_filters=[
+            StatFilters(
+                [
+                    stat_filter
+                    for mod in get_corrupt_for_item_class(item_classes[item_class])
+                    for stat_filter in mod.to_query_stat_filters()
+                ],
+                type="count",
+                min=1,
+            )
+        ],
+        corrupted=True,
+        sale_type="priced",
+        name=name_,
+        type=type_,
+        indexed="2week",
+    )
+    import asyncio
+
+    asyncio.run(
+        recurse_fetch_query_with_query_divider(all_query, [bisect_count_one_mod])
+    )
+    # results = search_and_fetch_batched(queries)

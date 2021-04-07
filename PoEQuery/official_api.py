@@ -1,15 +1,11 @@
 import logging
 from PoEQuery.official_api_query import OfficialApiQuery
 from typing import List, Optional
-from PoEQuery.official_api_async import search, fetch, fetch_batched
-from PoEQuery import league_id
+from PoEQuery.official_api_async import search
+from PoEQuery.batched_fetch import fetch_batched
 
 import asyncio
 from tqdm import tqdm  # type: ignore
-
-
-API_FETCH = "https://www.pathofexile.com/api/trade/fetch"
-STASH_URL = "https://www.pathofexile.com/character-window/get-stash-items"
 
 
 async def search_query_async(query: OfficialApiQuery, use_cached=True):
@@ -41,21 +37,14 @@ async def search_query_async(query: OfficialApiQuery, use_cached=True):
     return fetch_ids, total, query
 
 
-def recurse_fetch_query_with_query_divider(query, query_dividers):
-    global fetch_queries_tqdm
+async def recurse_fetch_query_with_query_divider(
+    query: OfficialApiQuery, query_dividers, fetch_queries_tqdm: Optional[tqdm] = None
+):
 
-    fetch_queries_tqdm = None
-
-    return _recurse_fetch_query_with_query_divider(query, query_dividers)
-
-
-def _recurse_fetch_query_with_query_divider(query, query_dividers):
-    global fetch_queries_tqdm
-
-    fetch_ids, total, query = search_query(query)
+    fetch_ids, total, query = await search_query_async(query)
 
     if fetch_queries_tqdm is None:
-        fetch_queries_tqdm = tqdm(total=total)
+        fetch_queries_tqdm = tqdm(total=total, desc="recurse fetch count")
 
     unsplit_queries = []
 
@@ -64,7 +53,6 @@ def _recurse_fetch_query_with_query_divider(query, query_dividers):
             finer_queries = query_divider(query)
             if finer_queries:
                 for finer_query in finer_queries:
-
                     if len(fetch_ids) == total:
                         # no need to recurse further, already found all
                         break
@@ -72,10 +60,10 @@ def _recurse_fetch_query_with_query_divider(query, query_dividers):
                         (
                             new_fetch_ids,
                             new_unsplit_queries,
-                        ) = _recurse_fetch_query_with_query_divider(
-                            finer_query, query_dividers
+                        ) = await recurse_fetch_query_with_query_divider(
+                            finer_query, query_dividers, fetch_queries_tqdm
                         )
-                        fetch_ids = new_fetch_ids | fetch_ids
+                        fetch_ids = new_fetch_ids + fetch_ids
                         unsplit_queries += new_unsplit_queries
                 break
         else:
