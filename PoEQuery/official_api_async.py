@@ -27,18 +27,18 @@ API_ITEM = "https://www.pathofexile.com/character-window/get-items"
 @cache_results("search_results", key=lambda query: query.json())
 @rate_limited("trade-search-request-limit")
 def search(query: OfficialApiQuery = None) -> requests.Response:
-    query = {} if query is None else query.json()
+    query_json = {} if query is None else query.json()
     return requests.post(
         f"{API_SEARCH}/{league_id}",
         headers=USER_AGENT_HEADER,
-        json=query,
+        json=query_json,
         cookies=dict(POESESSID=poesessid),
     )
 
 
 # See PoEQuery.batched_fetch for a batched, cached variant
-def fetch(item_ids: List[str]) -> requests.Response:
-    return fetch_batched(item_ids)
+async def fetch(item_ids: List[str]) -> List[dict]:
+    return await fetch_batched(item_ids)
 
 
 @rate_limited("backend-item-request-limit")

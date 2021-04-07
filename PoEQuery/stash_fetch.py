@@ -1,5 +1,5 @@
 import asyncio
-import pandas as pd
+import pandas as pd  # type:ignore
 
 from PoEQuery import account_name, league_id, realm
 from PoEQuery.official_api_async import stash_tab

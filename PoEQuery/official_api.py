@@ -1,6 +1,6 @@
 import logging
 from PoEQuery.official_api_query import OfficialApiQuery
-from typing import List, Optional
+from typing import Callable, List, Optional
 from PoEQuery.official_api_async import search
 from PoEQuery.batched_fetch import fetch_batched
 
@@ -38,7 +38,9 @@ async def search_query_async(query: OfficialApiQuery, use_cached=True):
 
 
 async def recurse_fetch_query_with_query_divider(
-    query: OfficialApiQuery, query_dividers, fetch_queries_tqdm: Optional[tqdm] = None
+    query: OfficialApiQuery,
+    query_dividers: List[Callable[[OfficialApiQuery], List[OfficialApiQuery]]],
+    fetch_queries_tqdm: Optional[tqdm] = None,
 ):
 
     fetch_ids, total, query = await search_query_async(query)

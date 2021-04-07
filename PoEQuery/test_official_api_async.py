@@ -8,7 +8,7 @@ from PoEQuery.official_api_async import (
 from PoEQuery.batched_fetch import fetch_batched
 
 import asyncio
-import pytest
+import pytest  # type: ignore
 
 item_ids = [
     "388785b8862730a8f112bfa62e6e207d44d39c7585de5cc7f81f18c21d5498e9",

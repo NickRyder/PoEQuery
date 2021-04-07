@@ -2,7 +2,7 @@ from os.path import dirname, join
 import os
 import yaml
 import logging
-import tqdm
+import tqdm  # type: ignore
 
 
 class TqdmLoggingHandler(logging.StreamHandler):

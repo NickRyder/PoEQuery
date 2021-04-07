@@ -21,8 +21,9 @@ from typing import Dict, List
 
 import time
 
+from tqdm import tqdm  # type: ignore
+
 import requests
-from tqdm.std import tqdm
 
 from PoEQuery import __diskcache_path__, poesessid, user_agent
 from PoEQuery.x_rate_limiter import TqdmLock, rate_limited
