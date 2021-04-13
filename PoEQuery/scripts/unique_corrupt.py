@@ -6,8 +6,7 @@ from PoEQuery.official_api_query import OfficialApiQuery, StatFilter, StatFilter
 from tqdm import tqdm
 
 from PoEQuery.official_api import (
-    recurse_fetch_query_with_query_divider,
-    search_and_fetch_batched,
+    fetch_query_with_query_dividers,
 )
 from PoEQuery.wiki_api import fetch_all_query
 
@@ -179,7 +178,5 @@ for values in t:
     )
     import asyncio
 
-    asyncio.run(
-        recurse_fetch_query_with_query_divider(all_query, [bisect_count_one_mod])
-    )
+    asyncio.run(fetch_query_with_query_dividers(all_query, [bisect_count_one_mod]))
     # results = search_and_fetch_batched(queries)
