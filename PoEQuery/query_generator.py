@@ -1,7 +1,7 @@
 import logging
 from typing import List
 from PoEQuery.official_api_query import OfficialApiQuery
-from string import ascii_lowercase
+import json
 from copy import deepcopy
 
 
@@ -160,8 +160,9 @@ def bisect_count_one_mod(query: OfficialApiQuery) -> List[OfficialApiQuery]:
 
         n_filters = len(count_stat_filters.filters)
         logging.info(f"Bisecting {n_filters} mods")
-        left_filters = count_stat_filters.filters[: n_filters // 2]
-        right_filters = count_stat_filters.filters[n_filters // 2 :]
+        filters = sorted(count_stat_filters.filters, key=lambda x: json.dumps(x.json()))
+        left_filters = filters[: n_filters // 2]
+        right_filters = filters[n_filters // 2 :]
 
         left_query_copy, right_query_copy = deepcopy(query), deepcopy(query)
         left_query_copy.stat_filters[0].filters = left_filters
