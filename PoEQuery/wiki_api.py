@@ -31,7 +31,7 @@ if __name__ == "__main__":
     example_query = {
         "title": "Special:CargoExport",
         "tables": "items,",
-        "fields": "items.name, items.base_item",
+        "fields": "items.name, items.base_item, items.drop_enabled, items.drop_areas, items.drop_monsters, items.drop_leagues",
         "where": 'items.rarity = "Unique"',
         "order by": "`cargo__items`.`name`,`cargo__items`.`base_item`",
         "limit": "5000",
@@ -39,4 +39,18 @@ if __name__ == "__main__":
     }
 
     unique_json = fetch_all_query(example_query)
-    print(unique_json)
+
+    def without(d, keys):
+        new_d = d.copy()
+        for key in keys:
+            new_d.pop(key)
+        return new_d
+
+    print(
+        {
+            (unique["name"], unique["base item"]): without(
+                unique, ["name", "base item"]
+            )
+            for unique in unique_json
+        }
+    )
