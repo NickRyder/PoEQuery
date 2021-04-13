@@ -43,10 +43,10 @@ def cache_results(subdirectory, key, expire=DEFAULT_EXPIRE):
             _key = key(*args, **kwargs)
             if _key in cache and use_cached:
                 cached_result, expire_time = cache.get(_key, expire_time=True)
-                logging.info(
-                    f"Found cached result, expires in {expire_time - time.time():0.2f}s "
-                    f"({(expire_time - time.time())/(60*60*24):0.2f} days)"
-                )
+                # logging.info(
+                #     f"Found cached result, expires in {expire_time - time.time():0.2f}s "
+                #     f"({(expire_time - time.time())/(60*60*24):0.2f} days)"
+                # )
                 return cached_result
             else:
                 result = await async_fn(*args, **kwargs)
