@@ -114,8 +114,35 @@ for option_idx in range(1, 51, 1):
 
 results = search_and_fetch_batched(queries)
 
+from PoEPrice.price_fitter import find_price
+
+
+rows = []
 for option_idx in range(1, 51, 1):
     for ilvl_cutoff in ilvls:
         for passive_count_min, passive_count_max in passive_counts:
-            x = [OfficialApiResult(result) for result in results.pop()]
-            print([y.ninja_currency_value for y in x])
+            results_json = results.pop(0)
+            x = [OfficialApiResult(result) for result in results_json]
+            price = find_price([y.ninja_currency_value for y in x])
+            rows.append(
+                {
+                    "cluster": option_idx_dicts[option_idx - 1]["text"],
+                    "ilvl": ilvl_cutoff,
+                    "passive_count_min": passive_count_min,
+                    "price": price,
+                }
+            )
+
+import pandas as pd
+
+df = pd.DataFrame(rows)
+df.query("`ilvl` == 84")[["cluster", "passive_count_min", "price"]].pivot_table(
+    index="cluster", columns="passive_count_min"
+)
+totals = df.sum() / df.count()
+print(
+    totals["price"][[2, 3]].mean(),
+    totals["price"][[4, 4, 6]].mean(),
+    totals["price"][[8, 9, 9, 9, 12]].mean(),
+)
+breakpoint()
