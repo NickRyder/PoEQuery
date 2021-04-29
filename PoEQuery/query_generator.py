@@ -1,6 +1,6 @@
 import logging
 from typing import List
-from PoEQuery.official_api_query import OfficialApiQuery
+from PoEQuery.official_api_query import OfficialApiQuery, StatFilter, StatFilters
 import json
 from copy import deepcopy
 
@@ -171,6 +171,104 @@ def bisect_count_one_mod(query: OfficialApiQuery) -> List[OfficialApiQuery]:
         return [left_query_copy, right_query_copy]
     else:
         return []
+
+
+def bisect_count_two_mod(query: OfficialApiQuery) -> List[OfficialApiQuery]:
+    """
+    Query must have one stat_filter which is a count
+    """
+    assert (
+        len(query.stat_filters) == 1
+    ), "bisect_count_two_mod expects only one stat filter"
+    assert (
+        query.stat_filters[0].type == "count"
+        and query.stat_filters[0].min == 1
+        and query.stat_filters[0].max == None
+    ), "bisect_count_two_mod expects a count filter"
+
+    count_stat_filters = query.stat_filters[0]
+    if len(count_stat_filters.filters) > 1:
+
+        n_filters = len(count_stat_filters.filters)
+        logging.info(f"Bisecting {n_filters} mods")
+        filters = sorted(count_stat_filters.filters, key=lambda x: json.dumps(x.json()))
+        left_filters = filters[: n_filters // 2]
+        right_filters = filters[n_filters // 2 :]
+
+        left_query_copy, right_query_copy = deepcopy(query), deepcopy(query)
+        left_query_copy.stat_filters[0].filters = left_filters
+        right_query_copy.stat_filters[0].filters = right_filters
+
+        return [left_query_copy, right_query_copy]
+    else:
+        return []
+
+
+def bisect_count_two_mod(query: OfficialApiQuery) -> List[OfficialApiQuery]:
+    """"""
+
+    if len(query.stat_filters) == 1:
+        assert (
+            query.stat_filters[0].type == "count"
+            and query.stat_filters[0].min == 2
+            and query.stat_filters[0].max == None
+        ), "bisect_count_two_mod expects a count filter"
+
+        count_stat_filters = query.stat_filters[0]
+        n_filters = len(count_stat_filters.filters)
+
+        if n_filters > 2:
+            logging.info(f"Bisecting {n_filters} mods")
+            filters = sorted(
+                count_stat_filters.filters, key=lambda x: json.dumps(x.json())
+            )
+            left_filters = filters[: n_filters // 2]
+            right_filters = filters[n_filters // 2 :]
+
+            left_query_copy, right_query_copy = deepcopy(query), deepcopy(query)
+            left_query_copy.stat_filters[0].filters = left_filters
+            right_query_copy.stat_filters[0].filters = right_filters
+
+            cross_query_copy = deepcopy(query)
+            cross_query_copy.stat_filters.append(
+                StatFilters(filters=deepcopy(left_filters), type="count", min=1)
+            )
+            cross_query_copy.stat_filters.append(
+                StatFilters(filters=deepcopy(right_filters), type="count", min=1)
+            )
+
+            return [left_query_copy, cross_query_copy, right_query_copy]
+    elif len(query.stat_filters) == 3:
+        assert all([stat_filter.type == "count" for stat_filter in query.stat_filters])
+        assert [stat_filter.min for stat_filter in query.stat_filters] == [1, 2, 1]
+        assert all([stat_filter.max == None for stat_filter in query.stat_filters])
+
+        left_filters = query.stat_filters[0].filters
+        right_filters = query.stat_filters[2].filters
+
+        if len(right_filters) == len(left_filters) == 1:
+            return []
+        elif len(right_filters) > len(left_filters):
+            query.stat_filters[0], query.stat_filters[2] = (
+                query.stat_filters[2],
+                query.stat_filters[0],
+            )
+
+        split_filters = sorted(
+            query.stat_filters[0].filters, key=lambda x: json.dumps(x.json())
+        )
+        left_split_filters = split_filters[: len(split_filters) // 2]
+        right_split_filters = split_filters[len(split_filters) // 2 :]
+
+        left_query = deepcopy(query)
+        right_query = deepcopy(query)
+
+        left_query.stat_filters[0].filters = left_split_filters
+        right_query.stat_filters[0].filters = right_split_filters
+
+        return [left_query, right_query]
+    else:
+        raise ValueError("Not a valid bisect partition")
 
 
 from functools import partial
