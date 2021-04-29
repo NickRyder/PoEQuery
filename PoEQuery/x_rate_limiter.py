@@ -184,8 +184,12 @@ def rate_limited(x_rate_policy, use_tqdm=True):
                     raise TypeError(
                         f"the functions wrapped must output requests.Response instead of {type(response)}"
                     )
-
-                response.raise_for_status()
+                try:
+                    response.raise_for_status()
+                except Exception as e:
+                    raise type(e)(
+                        f"{e.response.status_code}, {e.response.reason}, {e.response.json()['error']['message']}"
+                    )
 
                 x_rate_response = XRateResponse(response)
                 assert (
