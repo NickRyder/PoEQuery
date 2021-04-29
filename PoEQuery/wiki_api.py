@@ -1,5 +1,6 @@
 from urllib.parse import ParseResult, urlencode
 from typing import Dict
+import pandas as pd
 import requests
 
 
@@ -27,7 +28,7 @@ def fetch_all_query(query: Dict[str, str]) -> dict:
     return fetch_json
 
 
-if __name__ == "__main__":
+def fetch_all_uniques():
     example_query = {
         "title": "Special:CargoExport",
         "tables": "items,",
@@ -40,17 +41,8 @@ if __name__ == "__main__":
 
     unique_json = fetch_all_query(example_query)
 
-    def without(d, keys):
-        new_d = d.copy()
-        for key in keys:
-            new_d.pop(key)
-        return new_d
+    return pd.DataFrame(unique_json)
 
-    print(
-        {
-            (unique["name"], unique["base item"]): without(
-                unique, ["name", "base item"]
-            )
-            for unique in unique_json
-        }
-    )
+
+if __name__ == "__main__":
+    print(fetch_all_uniques())
