@@ -17,7 +17,6 @@ async def search_query_async(query: OfficialApiQuery, use_cached=True):
     TODO: need more robust validation before caching
     """
     response = await search(query, use_cached=use_cached)
-
     response_json = response.json()
     try:
         query = response_json["query"]
@@ -26,6 +25,7 @@ async def search_query_async(query: OfficialApiQuery, use_cached=True):
 
     try:
         fetch_ids = response_json["result"]
+        logging.info(f"Complexity {response_json['complexity']}")
         total = response_json["total"]
     except KeyError:
         if use_cached:
