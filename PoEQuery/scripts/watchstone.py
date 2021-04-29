@@ -1,7 +1,5 @@
-from enum import unique
 import json
-from PoEQuery.official_api_result import Mod, OfficialApiResult
-from PoEQuery.official_api import fetch_results, search_query
+from PoEQuery.official_api import search_and_fetch_batched
 from PoEQuery.official_api_query import StatFilters, OfficialApiQuery
 from PoEQuery.affix_finder import find_affixes
 from tqdm import tqdm
@@ -64,11 +62,11 @@ for type in watchstones:
         OfficialApiQuery(type=type, identified=True, rarity="nonunique"),
         affix_type="explicit",
     )
-
+    queries = []
     for mod in tqdm(mods):
         results_entry = {"mod_str": str(mod), "mod_json": json.dumps(mod.json())}
         mod_stat_filters = StatFilters(filters=mod.to_query_stat_filters())
-        fetch_ids, total, query = search_query(
+        queries.append(
             OfficialApiQuery(
                 type=type,
                 identified=True,
@@ -78,14 +76,7 @@ for type in watchstones:
                 corrupted=False,
                 indexed="2week",
                 stat_filters=[mod_stat_filters],
-            ).json()
+            )
         )
-        print(total)
-        results = fetch_results(fetch_ids)
 
-        for idx, result in enumerate(results):
-            parsed_result = OfficialApiResult(result)
-            results_entry[f"price_{idx}"] = estimate_price_in_chaos(parsed_result.price)
-
-        results_df = results_df.append(results_entry, ignore_index=True)
-    results_df.to_csv(f"data/watchstones/{sanitize(type)}.csv")
+    results = search_and_fetch_batched(queries)
