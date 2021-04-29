@@ -111,7 +111,7 @@ class Waiter:
                 await asyncio.sleep(min(1.0, time_to_wait))
             self.tqdm.reset()
         else:
-            logging.info(f"Initializing persistent wait time cache for {x_rate_policy}")
+            logging.info(f"Initializing persistent wait time cache for {self.policy}")
 
     def update(self, wait_time):
         wait_times_by_policy[self.policy] = time.time() + wait_time
