@@ -103,6 +103,7 @@ class StatFilter:
     id: str
     min: Optional[float] = None
     max: Optional[float] = None
+    option: Optional[int] = None
     disabled: bool = False
 
     def _value_json(self):
@@ -111,6 +112,8 @@ class StatFilter:
             value_json["min"] = self.min
         if self.max is not None:
             value_json["max"] = self.max
+        if self.option is not None:
+            value_json["option"] = self.option
 
         return value_json
 
@@ -175,6 +178,8 @@ class OfficialApiQuery:
     enchanted: Optional[bool] = None
     fractured: Optional[bool] = None
     crafted: Optional[bool] = None
+    ilvl_min: Optional[int] = None
+    ilvl_max: Optional[int] = None
 
     sockets_b: Optional[int] = None
     sockets_g: Optional[int] = None
@@ -185,6 +190,25 @@ class OfficialApiQuery:
     links_g: Optional[int] = None
     links_r: Optional[int] = None
     links_w: Optional[int] = None
+
+    ultimatum_output: Optional[str] = None
+    ultimatum_input: Optional[str] = None
+
+    def __post_init__(self):
+        for stat_filter in self.stat_filters:
+            assert isinstance(
+                stat_filter, StatFilters
+            ), "stat filters not of type StatFilters"
+
+    def _get_ultimatum_filters(self):
+        filters = {}
+        if self.ultimatum_output:
+            filters["ultimatum_output"] = {"option": self.ultimatum_output}
+
+        if self.ultimatum_input:
+            filters["ultimatum_input"] = {"option": self.ultimatum_input}
+
+        return {"filters": filters}
 
     def _get_socket_filters(self):
         filters = {}
@@ -237,6 +261,10 @@ class OfficialApiQuery:
             filters["talisman_tier"] = {"max": self.talisman_tier_max}
         if self.quality_max is not None:
             filters["quality"] = {"max": self.quality_max}
+        if self.ilvl_min is not None:
+            filters["ilvl"] = {"min": self.ilvl_min}
+        if self.ilvl_max is not None:
+            filters["ilvl"] = {"min": self.ilvl_max}
         return {"filters": filters}
 
     def _get_type_filters(self):
@@ -269,7 +297,9 @@ class OfficialApiQuery:
         socket_filters = self._get_socket_filters()
         if socket_filters["filters"]:
             filters["socket_filters"] = socket_filters
-
+        ultimatum_filters = self._get_ultimatum_filters()
+        if ultimatum_filters["filters"]:
+            filters["ultimatum_filters"] = ultimatum_filters
         return filters
 
     def _get_status(self):
