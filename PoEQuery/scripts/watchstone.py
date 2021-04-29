@@ -1,33 +1,12 @@
-import json
-from PoEQuery.official_api import search_and_fetch_batched
+import asyncio
 from PoEQuery.official_api_query import StatFilters, OfficialApiQuery
 from PoEQuery.affix_finder import find_affixes
 from tqdm import tqdm
+from PoEQuery.query_generator import bisect_count_one_mod
 
-
-def estimate_price_in_chaos(price):
-    if price.currency == "alch":
-        return price.amount * 0.2
-    elif price.currency == "chaos":
-        return price.amount * 1
-    elif price.currency == "exalted":
-        return price.amount * 100
-    elif price.currency == "mirror":
-        return price.amount * 100 * 420
-    else:
-        # print(price)
-        return None
-
-
-def sanitize(string):
-    return string.lower().replace(" ", "_").replace("'", "")
-
-
-from pandas import DataFrame
-
-results_df = DataFrame()
-
-# remaining_use_mod = Mod({'name': '', 'tier': '', 'magnitudes': [{'hash': 'explicit.stat_1479533453', 'min': 15, 'max': 15}]})
+from PoEQuery.official_api import (
+    fetch_query_with_query_dividers,
+)
 
 watchstones = [
     "Platinum Glennach Cairns Watchstone",
@@ -56,27 +35,34 @@ watchstones = [
     "Titanium Valdo's Rest Watchstone",
 ]
 
-for type in watchstones:
-    print(type)
+t = tqdm(watchstones)
+for type in t:
+    t.set_description(desc=f"watchstone - {type}")
+
     mods = find_affixes(
         OfficialApiQuery(type=type, identified=True, rarity="nonunique"),
         affix_type="explicit",
     )
-    queries = []
-    for mod in tqdm(mods):
-        results_entry = {"mod_str": str(mod), "mod_json": json.dumps(mod.json())}
-        mod_stat_filters = StatFilters(filters=mod.to_query_stat_filters())
-        queries.append(
-            OfficialApiQuery(
-                type=type,
-                identified=True,
-                rarity="nonunique",
-                mirrored=False,
-                enchanted=False,
-                corrupted=False,
-                indexed="2week",
-                stat_filters=[mod_stat_filters],
+    all_query = OfficialApiQuery(
+        type=type,
+        # identified=True,
+        rarity="nonunique",
+        # mirrored=False,
+        # enchanted=False,
+        # corrupted=False,
+        indexed="2weeks",
+        stat_filters=[
+            StatFilters(
+                [
+                    stat_filter
+                    for mod in mods
+                    for stat_filter in mod.to_query_stat_filters()
+                ],
+                type="count",
+                min=1,
             )
-        )
+        ],
+    )
 
-    results = search_and_fetch_batched(queries)
+    # results = search_and_fetch_batched(queries)
+    asyncio.run(fetch_query_with_query_dividers(all_query, [bisect_count_one_mod]))
