@@ -1,8 +1,6 @@
-import json
-import requests
-from official_api import fetch_results, fetch_query
-import pandas as pd
-
+from PoEQuery.official_api_result import OfficialApiResult
+from PoEQuery.official_api import search_and_fetch_batched
+from PoEQuery.official_api_query import OfficialApiQuery, StatFilter, StatFilters
 
 option_idx_dicts = [
     {
@@ -76,94 +74,48 @@ option_idx_dicts = [
 ]
 
 
-def create_item_query(option_idx, ilvl, passive_count):
-    return {
-        "query": {
-            "status": {"option": "any"},
-            "stats": [
-                {
-                    "type": "and",
-                    "filters": [
-                        {
-                            "id": "enchant.stat_3948993189",
-                            "value": {"option": option_idx},
-                            "disabled": False,
-                        },
-                        {
-                            "id": "enchant.stat_3086156145",
-                            "value": {"min": passive_count, "max": passive_count},
-                            "disabled": False,
-                        },
-                    ],
-                }
-            ],
-            "filters": {
-                "misc_filters": {
-                    "filters": {"ilvl": {"min": ilvl}, "corrupted": {"option": "false"}}
-                },
-                "trade_filters": {"filters": {"indexed": {"option": "3days"}}},
-            },
-        },
-        "sort": {"price": "asc"},
-    }
+def create_item_query(option_idx, ilvl, passive_count_min=None, passive_count_max=None):
+    return OfficialApiQuery(
+        stat_filters=[
+            StatFilters(
+                filters=[
+                    StatFilter("enchant.stat_3948993189", option=option_idx),
+                    StatFilter(
+                        "enchant.stat_3086156145",
+                        min=passive_count_min,
+                        max=passive_count_max,
+                    ),
+                ]
+            ),
+        ],
+        ilvl_min=ilvl,
+        mirrored=False,
+        corrupted=False,
+        rarity="nonunique",
+    )
 
 
-def _convert_price_to_chaos(price_json):
-    if price_json["currency"] == "chaos":
-        return price_json["amount"]
-    elif price_json["currency"] == "exa":
-        return price_json["amount"] * 165
-    elif price_json["currency"] == "exalted":
-        return price_json["amount"] * 165
-    else:
-        raise ValueError(f"unknown currency: {price_json['currency']}")
+passive_counts = [(2, 2), (3, 3), (4, 5), (6, 6), (8, 8), (9, 11), (12, 12)]
+ilvls = [1, 50, 64, 75, 84]
 
-
-data = []
+queries = []
 for option_idx in range(1, 51, 1):
-    for ilvl_cutoff in range(68, 87):
-        for passive_count in range(2, 13, 1):
-            try:
-                query = create_item_query(
-                    option_idx=option_idx, ilvl=ilvl_cutoff, passive_count=passive_count
+    for ilvl_cutoff in ilvls:
+        for passive_count_min, passive_count_max in passive_counts:
+            queries.append(
+                create_item_query(
+                    option_idx=option_idx,
+                    ilvl=ilvl_cutoff,
+                    passive_count_min=passive_count_min,
+                    passive_count_max=passive_count_max,
                 )
-                fetch_ids, total, query = fetch_query(query)
-                results = fetch_results(fetch_ids[:10])
-                for option_idx_dict in option_idx_dicts:
-                    if option_idx_dict["id"] == option_idx:
-                        option_text = option_idx_dict["text"]
-                header = [option_text, ilvl_cutoff, passive_count]
-                prices = []
-                for result in results:
-                    try:
-                        prices.append(
-                            _convert_price_to_chaos(result["listing"]["price"])
-                        )
-                    except ValueError as e:
-                        print(e)
-                if prices:
-                    data.append(header + prices)
-                    print(header + prices)
-            except Exception as e:
-                print(e)
+            )
 
-dataframe = pd.DataFrame(
-    data,
-    columns=[
-        "option_idx",
-        "base ilvl_cutoff",
-        "passive_count",
-        "price 0",
-        "price 1",
-        "price 2",
-        "price 3",
-        "price 4",
-        "price 5",
-        "price 6",
-        "price 7",
-        "price 8",
-        "price 9",
-    ],
-)
-dataframe.to_csv("cluster_jewel_prices_extended.csv")
-breakpoint()
+
+results = search_and_fetch_batched(queries)
+
+for option_idx in range(1, 51, 1):
+    for ilvl_cutoff in ilvls:
+        for passive_count_min, passive_count_max in passive_counts:
+            x = [OfficialApiResult(result) for result in results.pop()]
+            print([y.ninja_currency_value for y in x])
