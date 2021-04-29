@@ -3,6 +3,7 @@ from dataclasses import dataclass, fields
 from typing import Optional, Tuple
 from PoEQuery.stats import stats
 from copy import deepcopy
+from PoEQuery.ninja import currency_overview
 
 
 @dataclass(unsafe_hash=True)
@@ -143,6 +144,7 @@ class OfficialApiItem:
 @dataclass(unsafe_hash=True)
 class OfficialApiResult:
     price: Optional[Price]
+    league: str
     implicits: Tuple[Mod]
     enchants: Tuple[Mod]
     explicits: Tuple[Mod]
@@ -155,6 +157,8 @@ class OfficialApiResult:
             self.price = Price(json["listing"]["price"])
         else:
             self.price = None
+
+        self.league = json["item"]["league"]
 
         try:
             self.implicits = tuple(
@@ -210,6 +214,19 @@ class OfficialApiResult:
             )
         except KeyError:
             self.crafteds = tuple()
+
+    @property
+    def ninja_currency_value(self):
+        if self.price.currency == "chaos":
+            return self.price.amount
+        else:
+            matches = [
+                c
+                for c in currency_overview(self.league).values()
+                if c["tradeId"] == self.price.currency
+            ]
+            assert len(matches) == 1, f"couldn't find currency for {self.price.currency}"
+            return matches[0]["chaosEquivalent"] * self.price.amount
 
     def __repr__(self):
         """
